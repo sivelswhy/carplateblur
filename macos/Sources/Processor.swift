@@ -12,10 +12,14 @@ struct Job: Identifiable {
         case cancelled
     }
 
-    let id = UUID()
+    var id = UUID()
     let source: URL
     var output: URL
     var status: Status = .waiting
+    /// Exported in an earlier session: shown for reference, but can't be edited (its analysis is gone).
+    var fromHistory = false
+    /// When the export finished.
+    var exportedAt: Date?
     /// Set when the file was reviewed in the editor: export masks exactly this.
     var plan: MaskPlan?
     /// The analysis made during export (and the detection settings it used), reused by the editor.
@@ -30,6 +34,21 @@ struct Job: Identifiable {
         if case .running = status { return true }
         return false
     }
+
+    var isDone: Bool {
+        if case .done = status { return true }
+        return false
+    }
+}
+
+/// A finished export, saved so the list survives relaunches.
+private struct HistoryEntry: Codable {
+    let id: UUID
+    let source: URL
+    let output: URL
+    let plates: Int
+    let faces: Int
+    let exportedAt: Date
 }
 
 /// Queue of files to anonymize; processes them one at a time in the background.
@@ -38,7 +57,7 @@ final class Processor: ObservableObject {
     @Published var options = Options.load() {
         didSet { options.save() }
     }
-    @Published private(set) var jobs: [Job] = []
+    @Published private(set) var jobs: [Job] = Processor.loadHistory()
     @Published private(set) var engineError: String?
     @Published private(set) var preview: CGImage?
 
@@ -74,6 +93,44 @@ final class Processor: ObservableObject {
             }
         }
         preview = nil
+        saveHistory()
+    }
+
+    // MARK: History
+
+    /// ~/Library/Application Support/MultiBlur/history.json
+    private static var historyURL: URL {
+        URL.applicationSupportDirectory.appendingPathComponent("MultiBlur/history.json")
+    }
+
+    /// Exports from earlier sessions whose result still exists.
+    private static func loadHistory() -> [Job] {
+        guard let data = try? Data(contentsOf: historyURL),
+              let entries = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return [] }
+        return entries
+            .filter { FileManager.default.fileExists(atPath: $0.output.path) }
+            .map { entry in
+                var job = Job(source: entry.source, output: entry.output)
+                job.id = entry.id
+                job.status = .done(DetectionCount(plates: entry.plates, faces: entry.faces))
+                job.fromHistory = true
+                job.exportedAt = entry.exportedAt
+                return job
+            }
+    }
+
+    private func saveHistory() {
+        let entries = jobs.compactMap { job -> HistoryEntry? in
+            guard case .done(let count) = job.status else { return nil }
+            return HistoryEntry(id: job.id, source: job.source, output: job.output, plates: count.plates,
+                                faces: count.faces, exportedAt: job.exportedAt ?? Date())
+        }
+        do {
+            try FileManager.default.createDirectory(at: Self.historyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(entries).write(to: Self.historyURL, options: .atomic)
+        } catch {
+            // The history is a convenience; failing to save it must not disturb exports.
+        }
     }
 
     /// Stops the job being processed; its partial output is deleted.
@@ -82,8 +139,25 @@ final class Processor: ObservableObject {
         current?.task.cancel()
     }
 
+    /// Moves a finished file's exported result (never the original) to the Trash, then removes it
+    /// from the list. Returns false if the file couldn't be moved.
+    @discardableResult
+    func trashOutput(_ id: UUID) -> Bool {
+        guard let job = job(id), case .done = job.status, !job.isRunning else { return false }
+        do {
+            if FileManager.default.fileExists(atPath: job.output.path) {
+                try FileManager.default.trashItem(at: job.output, resultingItemURL: nil)
+            }
+        } catch {
+            return false
+        }
+        remove(id)
+        return true
+    }
+
     func remove(_ id: UUID) {
         jobs.removeAll { $0.id == id && !$0.isRunning }
+        saveHistory()
     }
 
     /// The engine shared with editor windows (models load once).
@@ -106,7 +180,7 @@ final class Processor: ObservableObject {
 
     /// Exports a file again as reviewed in the editor, replacing its previous result.
     func reexport(_ id: UUID, plan: MaskPlan, edits: Edits) {
-        guard let index = jobs.firstIndex(where: { $0.id == id }), !jobs[index].isRunning else { return }
+        guard let index = jobs.firstIndex(where: { $0.id == id }), !jobs[index].isRunning, !jobs[index].fromHistory else { return }
         jobs[index].plan = plan
         jobs[index].edits = edits
         jobs[index].status = .waiting
@@ -168,6 +242,8 @@ final class Processor: ObservableObject {
                     jobs[index].edits = nil
                 }
                 setStatus(.done(count), for: job.id)
+                if let index = jobs.firstIndex(where: { $0.id == job.id }) { jobs[index].exportedAt = Date() }
+                saveHistory()
                 if let sound = options.completionSound { NSSound(named: sound)?.play() }
             } catch is CancellationError {
                 setStatus(.cancelled, for: job.id)

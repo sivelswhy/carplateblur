@@ -63,7 +63,7 @@ Options mirror [deface](https://github.com/ORB-HD/deface)'s where an equivalent 
 | `--plate-mask-scale` | `1.15` | Plate mask scale |
 | `--draw-scores` | off | Draw detection scores (deface `--draw-scores`) |
 | `--strength` | `51` | Minimum blur kernel |
-| `--conf` | `0.05` | Plate confidence threshold. Defaults to the minimum: a false positive is harmless, a missed plate is not |
+| `--conf` | `0.4` | Plate confidence threshold. Lower catches more plates but also flags ordinary text (signs, shop fronts): on test photos, 0.4 halved signs flagged by mistake compared with 0.05 while still finding ~88% of plates |
 | `--face-conf`, `--thresh` | `0.2` | Face confidence threshold (deface `--thresh`) |
 | `--small-objects` | `photos` | `off`, `photos` or `all`: also search overlapping tiles of large images for small, distant objects |
 | `--face-max-side` | `0` | Downscale for face detection; `0` = full resolution (deface `--scale`) |
@@ -90,6 +90,8 @@ A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic
 
 **Editor**: click ✏️ on an exported file (or right-click › Edit…) to review it. The preview shows the file as it will be exported, with an outline around every mask; scrub through videos frame by frame. Hover a mask and click it (×) to remove it, keeping that face or plate visible (everywhere in a video), e.g. to blur everyone except one person; the sidebar lists every face and plate with a thumbnail and a switch. Drag to mask something that was missed: in videos, the box then follows the object with Vision's object tracker. **Export** writes the file again exactly as previewed, replacing the previous result. The editor opens instantly: files are analyzed once, during the first export (in the same pass), and the editor reuses that analysis and your previous edits; it only analyzes again if detection settings changed since. People who leave and come back, or appear in several shots, are recognized by their face (SFace) and listed once with their number of appearances, so one click covers them all. Only clearly detected faces are compared (eyes at least 15 px apart), tracks visible at the same time are never joined, tracking compares detected boxes (not enlarged masks) so it doesn't jump between faces side by side, a track is split if its face stops matching, and tracking restarts at cuts between shots. Small faces in crowds are never joined: they're listed per appearance. Check the preview before exporting.
 
+The list of exported files is kept across relaunches (in `~/Library/Application Support/MultiBlur/history.json`), with their export date; files from earlier sessions can be opened or shown in Finder, but not edited, since their analysis isn't kept. Results that were moved or deleted drop out of the list.
+
 In Finder, select photos, videos or folders and right-click › **Services › Anonymize with MultiBlur** to send them to the app. The app follows the system language (English or French). Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
 
 Every [deface](https://github.com/ORB-HD/deface) option is available: the masking ones in the main window, the others in **Settings** (⌘,), organized in Detection, Output and Advanced tabs. Settings are remembered between launches.
@@ -113,7 +115,7 @@ Every [deface](https://github.com/ORB-HD/deface) option is available: the maskin
 
 Also in Settings › Output: **Sound when done** plays a macOS system sound (Glass, Ping, Hero…) after each export (off by default).
 
-Plate-specific settings: plate confidence (default 0.05) and plate mask scale (1.15×). **Detection › Small objects** (Off / Photos / Photos & videos, default Photos) also searches overlapping tiles of large images for small, distant plates and faces. The webcam mode (`deface cam`) is not included.
+Plate-specific settings: plate confidence (default 0.4) and plate mask scale (1.15×). **Detection › Small objects** (Off / Photos / Photos & videos, default Photos) also searches overlapping tiles of large images for small, distant plates and faces. The webcam mode (`deface cam`) is not included.
 
 - Detection runs on the Neural Engine / GPU through CoreML and Vision. Faces use deface's `centerface.onnx` converted to CoreML, with its decoding and NMS ported to Swift (`macos/Sources/FaceDetector.swift`); outputs match the Python version.
 - Videos: plates and faces are tracked across frames (one mask per object that keeps following it for ~0.4 s when a frame is missed); audio is kept (re-encoded to AAC) and rotated iPhone videos are written upright.

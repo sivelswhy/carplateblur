@@ -131,3 +131,9 @@
 "Click the thumbnail to jump to it" = "Cliquez sur la miniature pour y aller";
 "Play" = "Lecture";
 "Pause" = "Pause";
+"Full Screen" = "Plein écran";
+"Exit Full Screen" = "Quitter le plein écran";
+"Exported in an earlier session: it can be opened, but not edited" = "Exporté lors d’une session précédente : il peut être ouvert, mais pas modifié";
+"Exported in an earlier session: it can be opened, but not edited." = "Exporté lors d’une session précédente : il peut être ouvert, mais pas modifié.";
+"Remove from List (⌘-click: also move the exported file to the Trash)" = "Retirer de la liste (⌘-clic : met aussi le fichier exporté à la Corbeille)";
+"Move Exported File to Trash" = "Mettre le fichier exporté à la Corbeille";

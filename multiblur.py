@@ -518,7 +518,7 @@ def parse_args(argv=None):
     masking.add_argument("--draw-scores", action="store_true", help="Draw detection scores (deface --draw-scores)")
 
     detection = p.add_argument_group("detection")
-    detection.add_argument("--conf", type=float, default=0.05, help="Plate confidence threshold (0-1)")
+    detection.add_argument("--conf", type=float, default=0.4, help="Plate confidence threshold (0-1)")
     detection.add_argument("--face-conf", "--thresh", type=float, default=0.2,
                            help="Face confidence threshold (deface --thresh)")
     detection.add_argument("--small-objects", choices=("off", "photos", "all"), default="photos",

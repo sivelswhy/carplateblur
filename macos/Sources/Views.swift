@@ -262,7 +262,9 @@ struct JobList: View {
             JobRow(job: job)
                 .contextMenu {
                     if case .done = job.status {
-                        Button("Edit…") { openWindow(id: "editor", value: job.id) }
+                        if !job.fromHistory {
+                            Button("Edit…") { openWindow(id: "editor", value: job.id) }
+                        }
                         Button("Open") { NSWorkspace.shared.open(job.output) }
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([job.output]) }
                         Divider()
@@ -271,6 +273,9 @@ struct JobList: View {
                         Button("Stop") { processor.cancel(job.id) }
                     } else {
                         Button("Remove from List") { processor.remove(job.id) }
+                        if job.isDone {
+                            Button("Move Exported File to Trash") { if !processor.trashOutput(job.id) { NSSound.beep() } }
+                        }
                     }
                 }
         }
@@ -292,8 +297,24 @@ final class ThumbnailLoader: ObservableObject {
     }
 }
 
+/// Tracks the ⌘ key, so rows can show that ⌘-click moves a file to the Trash.
+@MainActor
+final class ModifierKeys: ObservableObject {
+    static let shared = ModifierKeys()
+    @Published private(set) var command = false
+    private var monitor: Any?
+
+    private init() {
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.command = event.modifierFlags.contains(.command)
+            return event
+        }
+    }
+}
+
 struct JobRow: View {
     let job: Job
+    @ObservedObject private var keys = ModifierKeys.shared
     @EnvironmentObject private var processor: Processor
     @Environment(\.openWindow) private var openWindow
     @StateObject private var thumbnail = ThumbnailLoader()
@@ -324,16 +345,23 @@ struct JobRow: View {
             }
             Spacer(minLength: 8)
             trailing
-            // Stops a running job, removes any other one.
+            // Stops a running job, removes any other one; ⌘-click also moves an exported file to the Trash.
+            let trashes = keys.command && job.isDone
             Button {
-                if job.isRunning { processor.cancel(job.id) } else { processor.remove(job.id) }
+                if job.isRunning {
+                    processor.cancel(job.id)
+                } else if NSEvent.modifierFlags.contains(.command), job.isDone {
+                    if !processor.trashOutput(job.id) { NSSound.beep() }
+                } else {
+                    processor.remove(job.id)
+                }
             } label: {
-                Image(systemName: job.isRunning ? "stop.circle.fill" : "xmark.circle.fill")
+                Image(systemName: job.isRunning ? "stop.circle.fill" : trashes ? "trash.circle.fill" : "xmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(job.isRunning ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(job.isRunning ? AnyShapeStyle(.secondary) : trashes ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
             }
             .buttonStyle(.plain)
-            .help(job.isRunning ? "Stop" : "Remove from List")
+            .help(job.isRunning ? "Stop" : job.isDone ? "Remove from List (⌘-click: also move the exported file to the Trash)" : "Remove from List")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -353,7 +381,13 @@ struct JobRow: View {
                 .controlSize(.small)
                 .frame(maxWidth: 220)
         case .done(let count):
-            Text(Self.describe(count)).font(.caption).foregroundStyle(.secondary)
+            if job.fromHistory, let date = job.exportedAt {
+                (Text(Self.describe(count)) + Text(" · ") + Text(date, format: .dateTime.day().month().hour().minute()))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .help("Exported in an earlier session: it can be opened, but not edited")
+            } else {
+                Text(Self.describe(count)).font(.caption).foregroundStyle(.secondary)
+            }
         case .failed(let message):
             Text(message).font(.caption).foregroundStyle(.red).lineLimit(2)
         case .cancelled:
@@ -364,15 +398,18 @@ struct JobRow: View {
     @ViewBuilder private var trailing: some View {
         switch job.status {
         case .done:
-            Button {
-                openWindow(id: "editor", value: job.id)
-            } label: {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
+            // Earlier sessions' exports can't be edited: their analysis isn't kept.
+            if !job.fromHistory {
+                Button {
+                    openWindow(id: "editor", value: job.id)
+                } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Edit: choose what to mask")
             }
-            .buttonStyle(.plain)
-            .help("Edit: choose what to mask")
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([job.output])
             } label: {

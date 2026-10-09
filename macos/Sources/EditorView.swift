@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Editor window for one exported file: review every mask, keep chosen faces or plates visible,
@@ -7,7 +8,11 @@ struct EditorWindow: View {
     @EnvironmentObject private var processor: Processor
 
     var body: some View {
-        if let job = processor.job(jobID), let engine = try? processor.sharedEngine() {
+        if let job = processor.job(jobID), job.fromHistory {
+            Text("Exported in an earlier session: it can be opened, but not edited.")
+                .foregroundStyle(.secondary)
+                .frame(width: 420, height: 200)
+        } else if let job = processor.job(jobID), let engine = try? processor.sharedEngine() {
             EditorView(model: EditorModel(job: job, options: processor.options, engine: engine) { analysis, options in
                 processor.store(analysis, options: options, for: jobID)
             })
@@ -34,10 +39,20 @@ struct EditorView: View {
                 canvas
                 if let analysis = model.analysis, analysis.isVideo { scrubber(analysis) }
             }
-            Divider()
-            sidebar.frame(width: 240)
+            // Full screen is for watching the video: the list makes room for it.
+            if !ui.isFullScreen {
+                Divider()
+                sidebar.frame(width: 240)
+            }
         }
         .safeAreaInset(edge: .bottom) { bottomBar }
+        .background(WindowReader { ui.window = $0 })
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            if note.object as? NSWindow === ui.window { ui.isFullScreen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            if note.object as? NSWindow === ui.window { ui.isFullScreen = false }
+        }
         .frame(minWidth: 820, minHeight: 560)
         .navigationTitle(model.job.source.lastPathComponent)
         .task { await model.load() }
@@ -173,6 +188,7 @@ struct EditorView: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 56, alignment: .trailing)
+            fullScreenButton
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 14)
@@ -229,6 +245,14 @@ struct EditorView: View {
         .listStyle(.sidebar)
     }
 
+    private var fullScreenButton: some View {
+        Button { ui.window?.toggleFullScreen(nil) } label: {
+            Image(systemName: ui.isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }
+        .keyboardShortcut("f", modifiers: [.control, .command])
+        .help(ui.isFullScreen ? "Exit Full Screen" : "Full Screen")
+    }
+
     // MARK: Bottom bar
 
     private var bottomBar: some View {
@@ -238,8 +262,18 @@ struct EditorView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
+            if model.analysis?.isVideo == false { fullScreenButton.buttonStyle(.borderless) }
+            if ui.isFullScreen {
+                // Escape leaves full screen instead of closing the editor.
+                Button("Cancel") { dismiss() }
+                Button("") { ui.window?.toggleFullScreen(nil) }
+                    .keyboardShortcut(.cancelAction)
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+            } else {
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
             Button("Export") {
                 if let plan = model.plan() { processor.reexport(model.job.id, plan: plan, edits: model.edits) }
                 dismiss()
@@ -257,6 +291,9 @@ struct EditorView: View {
 @MainActor
 final class EditorUIState: ObservableObject {
     @Published var draft: CGRect?
+    @Published var isFullScreen = false
+    /// The editor's own window, to toggle full screen and recognize its notifications.
+    weak var window: NSWindow?
     /// Pointer position over the canvas, to highlight the mask a click would act on.
     @Published var hover: CGPoint?
 }
@@ -389,5 +426,20 @@ struct GroupRow: View {
             .controlSize(.small)
         }
         .help("Click the thumbnail to jump to it")
+    }
+}
+
+/// Hands over the NSWindow hosting a SwiftUI view.
+struct WindowReader: NSViewRepresentable {
+    let onWindow: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onWindow(view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { onWindow(view.window) }
     }
 }

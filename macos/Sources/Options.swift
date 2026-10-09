@@ -105,7 +105,7 @@ struct Options: Codable, Equatable {
     var drawScores = false
 
     // Detection (deface: --thresh, --mask-scale, --scale)
-    var plateConfidence: Double = 0.05
+    var plateConfidence: Double = 0.4
     var faceThreshold: Double = 0.2
     var faceMaskScale: Double = 1.3
     var plateMaskScale: Double = 1.15
