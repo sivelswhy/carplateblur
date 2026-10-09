@@ -180,7 +180,7 @@ struct MaskingOptions: View {
                     HStack(spacing: 4) {
                         Image(systemName: path == nil ? "exclamationmark.circle.fill" : "photo")
                             .foregroundStyle(path == nil ? Color.red : Color.secondary)
-                        Text(path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Choose Image…")
+                        Text(path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? String(localized: "Choose Image…"))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -265,8 +265,11 @@ struct JobList: View {
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([job.output]) }
                         Divider()
                     }
-                    Button("Remove from List") { processor.remove(job.id) }
-                        .disabled(job.isRunning)
+                    if job.isRunning {
+                        Button("Stop") { processor.cancel(job.id) }
+                    } else {
+                        Button("Remove from List") { processor.remove(job.id) }
+                    }
                 }
         }
         .listStyle(.inset)
@@ -318,18 +321,16 @@ struct JobRow: View {
             }
             Spacer(minLength: 8)
             trailing
-            // Running jobs can't be removed; keep the space so rows stay aligned.
+            // Stops a running job, removes any other one.
             Button {
-                processor.remove(job.id)
+                if job.isRunning { processor.cancel(job.id) } else { processor.remove(job.id) }
             } label: {
-                Image(systemName: "xmark.circle.fill")
+                Image(systemName: job.isRunning ? "stop.circle.fill" : "xmark.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(job.isRunning ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
             }
             .buttonStyle(.plain)
-            .help("Remove from list")
-            .opacity(job.isRunning ? 0 : 1)
-            .disabled(job.isRunning)
+            .help(job.isRunning ? "Stop" : "Remove from List")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -352,6 +353,8 @@ struct JobRow: View {
             Text(Self.describe(count)).font(.caption).foregroundStyle(.secondary)
         case .failed(let message):
             Text(message).font(.caption).foregroundStyle(.red).lineLimit(2)
+        case .cancelled:
+            Text("Stopped").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -369,6 +372,8 @@ struct JobRow: View {
             .help("Show in Finder")
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+        case .cancelled:
+            EmptyView()
         case .running(let fraction):
             Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption.monospacedDigit())
@@ -380,9 +385,9 @@ struct JobRow: View {
 
     private static func describe(_ count: DetectionCount) -> String {
         var parts: [String] = []
-        if count.plates > 0 { parts.append(count.plates == 1 ? "1 plate" : "\(count.plates) plates") }
-        if count.faces > 0 { parts.append(count.faces == 1 ? "1 face" : "\(count.faces) faces") }
-        return parts.isEmpty ? "Nothing detected" : parts.joined(separator: " · ") + " hidden"
+        if count.plates > 0 { parts.append(count.plates == 1 ? String(localized: "1 plate") : String(localized: "\(count.plates) plates")) }
+        if count.faces > 0 { parts.append(count.faces == 1 ? String(localized: "1 face") : String(localized: "\(count.faces) faces")) }
+        return parts.isEmpty ? String(localized: "Nothing detected") : String(localized: "\(parts.joined(separator: " · ")) hidden")
     }
 }
 
@@ -392,7 +397,7 @@ struct StatusBar: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "folder")
-            Text(processor.outputFolder.map { "Saving to \($0.lastPathComponent)" } ?? "Saving next to the originals")
+            Text(processor.outputFolder.map { String(localized: "Saving to \($0.lastPathComponent)") } ?? String(localized: "Saving next to the originals"))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
@@ -417,7 +422,7 @@ struct UpdateSection: View {
     var body: some View {
         Section {
             LabeledContent("Version") {
-                Text("\(updater.version) (\(updater.shortCommit ?? "local build"))")
+                Text(verbatim: "\(updater.version) (\(updater.shortCommit ?? String(localized: "local build")))")
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
@@ -547,6 +552,14 @@ struct DetectionSettings: View {
             } footer: {
                 Text("Lower resolutions are faster but miss small, distant faces.")
             }
+
+            Section {
+                Picker("Small objects", selection: $processor.options.smallObjects) {
+                    ForEach(SmallObjectSearch.allCases) { Text($0.label).tag($0) }
+                }
+            } footer: {
+                Text("Also searches overlapping tiles of large images to find small, distant plates and faces. Slower, especially for videos.")
+            }
         }
         .formStyle(.grouped)
     }
@@ -560,7 +573,7 @@ struct OutputSettings: View {
             Section {
                 LabeledContent("Save to") {
                     HStack {
-                        Text(processor.outputFolder?.lastPathComponent ?? "Next to originals")
+                        Text(processor.outputFolder?.lastPathComponent ?? String(localized: "Next to originals"))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)

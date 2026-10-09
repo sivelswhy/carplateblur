@@ -12,6 +12,7 @@ struct MultiBlurApp: App {
         Window("MultiBlur", id: "main") {
             ContentView()
                 .environmentObject(processor)
+                .onAppear { appDelegate.processor = processor }
                 .frame(minWidth: 480, idealWidth: 540, minHeight: 420, idealHeight: 560)
         }
         .windowResizability(.contentMinSize)
@@ -25,6 +26,30 @@ struct MultiBlurApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Files received from Finder before the window, and its processor, exist.
+    private var pendingFiles: [URL] = []
+
+    var processor: Processor? {
+        didSet {
+            guard let processor, !pendingFiles.isEmpty else { return }
+            processor.add(pendingFiles)
+            pendingFiles = []
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// The "Anonymize with MultiBlur" Finder service (declared under NSServices in Info.plist).
+    @objc func anonymizeFiles(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        if let processor { processor.add(urls) } else { pendingFiles += urls }
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }

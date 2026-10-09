@@ -25,7 +25,7 @@ final class Updater: ObservableObject {
     }
 
     static let repository = "sivelswhy/multiblur"
-    private static let bundleIdentifier = "com.multiblur.MultiBlur"
+    nonisolated private static let bundleIdentifier = "com.multiblur.MultiBlur"
 
     @Published private(set) var state: State = .idle
 
@@ -47,7 +47,7 @@ final class Updater: ObservableObject {
             do {
                 state = try await fetchState()
             } catch {
-                state = .failed("Couldn't reach GitHub: \(error.localizedDescription)")
+                state = .failed(String(localized: "Couldn't reach GitHub: \(error.localizedDescription)"))
             }
         }
     }
@@ -120,8 +120,8 @@ final class Updater: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .invalidDownload: "The downloaded update isn't a valid MultiBlur app."
-            case .notWritable(let path): "MultiBlur can't replace itself in \(path). Move it to a folder you can write to, such as Applications."
+            case .invalidDownload: String(localized: "The downloaded update isn't a valid MultiBlur app.")
+            case .notWritable(let path): String(localized: "MultiBlur can't replace itself in \(path). Move it to a folder you can write to, such as Applications.")
             }
         }
     }

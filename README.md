@@ -1,6 +1,6 @@
 # MultiBlur
 
-Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, **pixelation** or a **black box**. Everything runs **fully offline**.
+Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, a **mosaic**, a **black box** or a **replacement image**. In videos, plates and faces are **tracked** so masks follow them even when the detector misses a frame. Everything runs **fully offline**.
 
 - **Plates**: YOLOv11 fine-tuned on license plates from many countries.
 - **Faces**: CenterFace from [deface](https://github.com/ORB-HD/deface).
@@ -16,7 +16,7 @@ Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivel
 
 The detection models are included in the app, which never touches the network on its own. **Settings › Advanced › Check for Updates** compares the commit the app was built from with the latest commit on `main`; when they differ, **Update and Relaunch** downloads that commit's release, checks it's a validly signed MultiBlur, replaces the app and relaunches it.
 
-Every push to `main` builds a universal app and publishes it as a new release ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+Every push to `main` runs the Python tests, then builds a universal app and publishes it as a new release ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
 ## Python CLI
 
@@ -41,34 +41,54 @@ The plate weights are stored in `./models/`. After that the script is **100% off
 ### Usage
 
 ```bash
-.venv/bin/python multiblur.py photo.jpg                     # plates + faces, blurred → photo_anonymized.jpg
-.venv/bin/python multiblur.py photo.jpg --mode black        # black boxes
-.venv/bin/python multiblur.py photo.jpg --targets faces     # faces only
-.venv/bin/python multiblur.py video.mov --mode pixelate -o out.mp4
-.venv/bin/python multiblur.py folder/                       # → folder/anonymized/
+.venv/bin/python multiblur.py photo.jpg                       # plates + faces, blurred → photo_anonymized.jpg
+.venv/bin/python multiblur.py photo.jpg --mode solid          # black boxes
+.venv/bin/python multiblur.py photo.jpg --targets faces       # faces only
+.venv/bin/python multiblur.py video.mov --mode mosaic -o out.mp4
+.venv/bin/python multiblur.py photo.jpg --mode image --replace-img smiley.png
+.venv/bin/python multiblur.py photo.jpg --mode none --draw-scores   # inspect detection scores
+.venv/bin/python multiblur.py folder/                         # → folder/anonymized/
 ```
+
+Options mirror [deface](https://github.com/ORB-HD/deface)'s where an equivalent exists, and the macOS app's settings:
 
 | Option | Default | Description |
 |---|---|---|
-| `-m, --mode` | `blur` | `blur`, `black` or `pixelate` |
 | `-t, --targets` | `plates faces` | What to mask: `plates`, `faces` or both |
-| `--conf` | `0.05` | Confidence threshold (lower = more detections, more false positives). Defaults to the minimum: a false positive is harmless, a missed plate is not |
-| `--face-conf` | `0.2` | Face confidence threshold (deface's default) |
-| `--padding` | `0.15` | Margin around each plate |
-| `--face-padding` | `0.3` | Margin on each side of a face (equals deface's `--mask-scale 1.3`) |
-| `--face-backend` | `auto` | `onnxrt` (faster, uses CoreML/CUDA when available) or `opencv` |
-| `--strength` | `51` / `6` | Minimum blur kernel / number of pixelation blocks |
-| `--model-size` | `s` | `n` (fastest) → `x` (most accurate) |
-| `--imgsz` | `1280` | Inference resolution (helps with small, distant plates) |
-| `--no-audio` | off | Video: remove the sound from the output |
-| `--persist` | `3` | Video: frames a mask stays visible after a detection (prevents flicker) |
-| `--device` | auto | `cpu`, `mps`, `cuda`, `0`… |
-| `--weights` | — | Custom YOLO weights |
-| `--download` | — | Download model weights and exit |
+| `-m, --mode` | `blur` | `blur`, `mosaic`, `solid` (black box), `image` or `none` (deface `--replacewith`; `pixelate`/`black` also work) |
+| `--mosaic-size` | `20` | Mosaic block size in pixels (deface `--mosaicsize`) |
+| `--replace-img` | — | Image for `--mode image` (deface `--replaceimg`); transparent areas show a blur, never the original |
+| `--boxes` | off | Boxes instead of ellipses for faces (deface `--boxes`) |
+| `--mask-scale` | `1.3` | Face mask scale (deface `--mask-scale`) |
+| `--plate-mask-scale` | `1.15` | Plate mask scale |
+| `--draw-scores` | off | Draw detection scores (deface `--draw-scores`) |
+| `--strength` | `51` | Minimum blur kernel |
+| `--conf` | `0.05` | Plate confidence threshold. Defaults to the minimum: a false positive is harmless, a missed plate is not |
+| `--face-conf`, `--thresh` | `0.2` | Face confidence threshold (deface `--thresh`) |
+| `--small-objects` | `photos` | `off`, `photos` or `all`: also search overlapping tiles of large images for small, distant objects |
+| `--face-max-side` | `0` | Downscale for face detection; `0` = full resolution (deface `--scale`) |
+| `--track-memory` | `0.4` | Video: seconds a tracked object stays masked after it was last detected |
+| `--model-size` | `s` | Plate model: `n` (fastest) → `x` (most accurate) |
+| `--imgsz` | `1280` | Plate inference resolution, also the tile size |
+| `--no-audio` | off | Video: remove the sound |
+| `--codec` | `h264` | Video codec: `h264` or `hevc` (needs ffmpeg) |
+| `--keep-metadata` | off | Keep image EXIF/GPS metadata (deface `--keep-metadata`) |
+| `--device` | auto | Plate model device: `cpu`, `mps`, `cuda`, `0`… |
+| `--face-backend` | `auto` | `onnxrt` (faster, uses CoreML/CUDA when available) or `opencv` (deface `--backend`) |
+| `--weights` | — | Custom YOLO plate weights |
+| `--download` | — | Download plate model weights and exit |
+
+### Tests
+
+```bash
+.venv/bin/python -m pytest tests     # geometry, tracking, masking, file naming; no models needed
+```
 
 ## macOS app (MultiBlur)
 
-A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result, click × to remove it from the list, or right-click for more. Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
+A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result, click ⏹ to stop a file being processed or × to remove it from the list, or right-click for more.
+
+In Finder, select photos, videos or folders and right-click › **Services › Anonymize with MultiBlur** to send them to the app. The app follows the system language (English or French). Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
 
 Every [deface](https://github.com/ORB-HD/deface) option is available: the masking ones in the main window, the others in **Settings** (⌘,), organized in Detection, Output and Advanced tabs. Settings are remembered between launches.
 
@@ -91,10 +111,10 @@ Every [deface](https://github.com/ORB-HD/deface) option is available: the maskin
 
 Also in Settings › Output: **Sound when done** plays a macOS system sound (Glass, Ping, Hero…) after each export (off by default).
 
-Plate-specific settings: plate confidence (default 0.05) and plate mask scale (1.15×). The webcam mode (`deface cam`) is not included.
+Plate-specific settings: plate confidence (default 0.05) and plate mask scale (1.15×). **Detection › Small objects** (Off / Photos / Photos & videos, default Photos) also searches overlapping tiles of large images for small, distant plates and faces. The webcam mode (`deface cam`) is not included.
 
 - Detection runs on the Neural Engine / GPU through CoreML and Vision. Faces use deface's `centerface.onnx` converted to CoreML, with its decoding and NMS ported to Swift (`macos/Sources/FaceDetector.swift`); outputs match the Python version.
-- Videos keep their audio (re-encoded to AAC) and orientation (rotated iPhone videos are written upright).
+- Videos: plates and faces are tracked across frames (one mask per object that keeps following it for ~0.4 s when a frame is missed); audio is kept (re-encoded to AAC) and rotated iPhone videos are written upright.
 - Image metadata (EXIF, GPS) is stripped from the output.
 - Requires macOS 14 or later.
 
@@ -121,4 +141,4 @@ The app is ad hoc signed. To run it on another Mac, right-click it and choose **
 
 ## Limitations
 
-No detector is perfect. Plates or faces that are very small, heavily angled, blurred by motion or cut off at the frame edge can be missed (faces seen from behind or in profile are harder). Review the output before publishing anything sensitive, and lower the confidence threshold if plates slip through.
+No detector is perfect. Plates or faces that are very small, heavily angled, blurred by motion or cut off at the frame edge can be missed (faces seen from behind or in profile are harder). Review the output before publishing anything sensitive, and lower the confidence threshold if plates slip through. At low thresholds the face detector also hides some face-like objects (round signs, traffic lights, textures): automatic filters tried for this (facial landmark checks, confirmation by Apple's person detector) also removed real faces in crowds, so they're not used.

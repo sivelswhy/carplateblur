@@ -1,6 +1,7 @@
-name: Build & Release
+name: Test, Build & Release
 
-# Every push to main builds a universal MultiBlur.app and publishes it as a GitHub release.
+# Every push to main runs the Python tests, then builds a universal MultiBlur.app and
+# publishes it as a GitHub release.
 # The CoreML models are versioned in models/*.mlpackage and embedded in the app, which then
 # works fully offline.
 on:
@@ -16,7 +17,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install numpy opencv-python-headless pytest
+      - run: pytest -q tests
+
   build:
+    needs: test
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5

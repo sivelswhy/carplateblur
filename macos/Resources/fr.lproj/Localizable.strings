@@ -1,0 +1,111 @@
+/* French translation of MultiBlur. Keys are the English strings used in the code. */
+
+/* Main window */
+"Add Files" = "Ajouter des fichiers";
+"Add photos, videos or folders" = "Ajouter des photos, vidéos ou dossiers";
+"Settings" = "Réglages";
+"Model unavailable" = "Modèle indisponible";
+"Quit" = "Quitter";
+"Plates" = "Plaques";
+"Faces" = "Visages";
+"Style" = "Style";
+"Face mask" = "Masque visage";
+"Face mask shape: ellipse or box (deface --boxes)" = "Forme du masque des visages : ellipse ou rectangle (deface --boxes)";
+"Block size" = "Taille des blocs";
+"Mosaic block size (deface --mosaicsize)" = "Taille des blocs de mosaïque (deface --mosaicsize)";
+"Replacement image (deface --replaceimg): PNG, JPEG, SVG… Transparent areas show a blur, never the original." = "Image de remplacement (deface --replaceimg) : PNG, JPEG, SVG… Les zones transparentes montrent un flou, jamais l’original.";
+"Choose Image…" = "Choisir une image…";
+"Drop Photos or Videos" = "Déposez des photos ou des vidéos";
+"License plates and faces are hidden on this Mac.\nNothing is uploaded." = "Les plaques et les visages sont masqués sur ce Mac.\nRien n’est envoyé en ligne.";
+"Choose Files…" = "Choisir des fichiers…";
+"Open" = "Ouvrir";
+"Show in Finder" = "Afficher dans le Finder";
+"Stop" = "Arrêter";
+"Remove from List" = "Retirer de la liste";
+"Waiting…" = "En attente…";
+"Stopped" = "Arrêté";
+"Clear Finished" = "Effacer les terminés";
+"Nothing detected" = "Rien détecté";
+"1 plate" = "1 plaque";
+"%lld plates" = "%lld plaques";
+"1 face" = "1 visage";
+"%lld faces" = "%lld visages";
+"%@ hidden" = "Masqués : %@";
+"Saving to %@" = "Enregistrement dans %@";
+"Saving next to the originals" = "Enregistrement à côté des originaux";
+
+/* Styles and option values */
+"Blur" = "Flou";
+"Mosaic" = "Mosaïque";
+"Black box" = "Rectangle noir";
+"Image" = "Image";
+"None" = "Aucun";
+"Ellipse" = "Ellipse";
+"Box" = "Rectangle";
+"Full resolution" = "Pleine résolution";
+"Off" = "Désactivé";
+"Photos" = "Photos";
+"Photos & videos" = "Photos et vidéos";
+"Neural Engine (fastest)" = "Neural Engine (le plus rapide)";
+"GPU" = "GPU";
+"CPU only" = "CPU uniquement";
+
+/* Settings */
+"Detection" = "Détection";
+"Output" = "Sortie";
+"Advanced" = "Avancé";
+"License Plates" = "Plaques d’immatriculation";
+"Confidence" = "Confiance";
+"Mask scale" = "Taille du masque";
+"Lower confidence catches more plates but may also hide other objects." = "Une confiance plus basse trouve plus de plaques, mais peut aussi masquer d’autres objets.";
+"Threshold" = "Seuil";
+"Resolution" = "Résolution";
+"Lower resolutions are faster but miss small, distant faces." = "Les résolutions plus basses sont plus rapides mais ratent les petits visages lointains.";
+"Small objects" = "Petits objets";
+"Also searches overlapping tiles of large images to find small, distant plates and faces. Slower, especially for videos." = "Analyse aussi les grandes images par tuiles pour trouver les petites plaques et les visages lointains. Plus lent, surtout pour les vidéos.";
+"Save to" = "Enregistrer dans";
+"Next to originals" = "À côté des originaux";
+"Reset" = "Réinitialiser";
+"Choose…" = "Choisir…";
+"Files get the “_anonymized” suffix; existing files are never overwritten." = "Les fichiers reçoivent le suffixe « _anonymized » ; aucun fichier existant n’est écrasé.";
+"Sound when done" = "Son de fin";
+"Plays after each file is exported." = "Joué après l’export de chaque fichier.";
+"Videos" = "Vidéos";
+"Keep audio" = "Conserver le son";
+"Codec" = "Codec";
+"Stands in for deface --ffmpeg-config" = "Équivalent de deface --ffmpeg-config";
+"Keep metadata (EXIF, GPS…)" = "Conserver les métadonnées (EXIF, GPS…)";
+"Off by default: metadata can reveal where and with which device a photo was taken." = "Désactivé par défaut : les métadonnées peuvent révéler où et avec quel appareil une photo a été prise.";
+"Run models on" = "Exécuter les modèles sur";
+"Stands in for deface --backend / --execution-provider" = "Équivalent de deface --backend / --execution-provider";
+"Live preview" = "Aperçu en direct";
+"Live preview shows processed frames in the main window and slightly slows exports." = "L’aperçu en direct affiche les images traitées dans la fenêtre principale et ralentit un peu les exports.";
+"Show detection scores" = "Afficher les scores de détection";
+"Writes each detection's confidence score above its mask, to tune the thresholds in Detection." = "Écrit le score de confiance de chaque détection au-dessus de son masque, pour régler les seuils dans Détection.";
+"Restore Defaults" = "Rétablir les valeurs par défaut";
+
+/* Updates */
+"Version" = "Version";
+"Updates" = "Mises à jour";
+"local build" = "build local";
+"Compares this build with the latest commit on github.com/%@. This is the only time MultiBlur goes online." = "Compare cette version avec le dernier commit sur github.com/%@. C’est le seul moment où MultiBlur se connecte.";
+"Check whether a newer version is available." = "Vérifiez si une version plus récente est disponible.";
+"Checking…" = "Vérification…";
+"MultiBlur is up to date." = "MultiBlur est à jour.";
+"A new version (“%@”) is being built. Check again in a minute." = "Une nouvelle version (« %@ ») est en cours de compilation. Réessayez dans une minute.";
+"Version %@ is available" = "La version %@ est disponible";
+"Downloading update…" = "Téléchargement de la mise à jour…";
+"Installing and relaunching…" = "Installation et redémarrage…";
+"Update and Relaunch" = "Mettre à jour et relancer";
+"Check for Updates" = "Rechercher des mises à jour";
+"Couldn't reach GitHub: %@" = "Impossible de joindre GitHub : %@";
+"The downloaded update isn't a valid MultiBlur app." = "La mise à jour téléchargée n’est pas une app MultiBlur valide.";
+"MultiBlur can't replace itself in %@. Move it to a folder you can write to, such as Applications." = "MultiBlur ne peut pas se remplacer dans %@. Déplacez-la dans un dossier modifiable, comme Applications.";
+
+/* Errors */
+"Detection models not found in the app bundle." = "Modèles de détection introuvables dans l’app.";
+"Cannot read %@." = "Impossible de lire %@.";
+"Unsupported file type." = "Type de fichier non pris en charge.";
+"Could not write output: %@" = "Impossible d’écrire le fichier : %@";
+"Choose a replacement image next to the Style menu." = "Choisissez une image de remplacement à côté du menu Style.";
+"Cannot read the replacement image %@." = "Impossible de lire l’image de remplacement %@.";

@@ -11,9 +11,28 @@
     <key>CFBundleVersion</key><string>1</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array><string>en</string><string>fr</string></array>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <!-- Finder: right-click photos, videos or folders › Services › Anonymize with MultiBlur -->
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict><key>default</key><string>Anonymize with MultiBlur</string></dict>
+            <key>NSMessage</key><string>anonymizeFiles</string>
+            <key>NSPortName</key><string>MultiBlur</string>
+            <key>NSRequiredContext</key><dict/>
+            <key>NSSendFileTypes</key>
+            <array>
+                <string>public.image</string>
+                <string>public.movie</string>
+                <string>public.folder</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

@@ -18,12 +18,12 @@ enum EngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelMissing: "Detection models not found in the app bundle."
-        case .unreadable(let name): "Cannot read \(name)."
-        case .unsupported: "Unsupported file type."
-        case .writeFailed(let reason): "Could not write output: \(reason)"
-        case .replacementImageMissing: "Choose a replacement image next to the Style menu."
-        case .replacementImageUnreadable(let name): "Cannot read the replacement image \(name)."
+        case .modelMissing: String(localized: "Detection models not found in the app bundle.")
+        case .unreadable(let name): String(localized: "Cannot read \(name).")
+        case .unsupported: String(localized: "Unsupported file type.")
+        case .writeFailed(let reason): String(localized: "Could not write output: \(reason)")
+        case .replacementImageMissing: String(localized: "Choose a replacement image next to the Style menu.")
+        case .replacementImageUnreadable(let name): String(localized: "Cannot read the replacement image \(name).")
         }
     }
 }
@@ -48,8 +48,8 @@ struct Detection {
 /// Detects license plates (YOLOv11 via Vision) and faces (CenterFace from deface), then masks them
 /// with Core Image. Runs entirely on-device; no network access.
 final class BlurEngine: @unchecked Sendable {
-    /// Video: number of frames a detection stays masked (prevents flicker on missed frames).
-    private static let persistFrames = 3
+    /// Video: how long a tracked object stays masked after the detector last saw it.
+    private static let trackMemory: Double = 0.4
     private static let previewInterval: TimeInterval = 0.15
 
     let compute: ComputeMode
@@ -140,7 +140,8 @@ final class BlurEngine: @unchecked Sendable {
 
     // MARK: - Detection
 
-    func detect(in image: CIImage, options: Options) throws -> ([Detection], DetectionCount) {
+    /// `tiled` adds passes on overlapping tiles to find small or distant objects.
+    func detect(in image: CIImage, options: Options, tiled: Bool = false) throws -> ([Detection], DetectionCount) {
         // Plates (Vision, Neural Engine) and faces (CenterFace, GPU) use different hardware: run them side by side.
         final class Results: @unchecked Sendable {
             var plates: [(rect: CGRect, score: Float)] = []
@@ -151,10 +152,16 @@ final class BlurEngine: @unchecked Sendable {
         DispatchQueue.concurrentPerform(iterations: 2) { task in
             do {
                 if task == 0, options.maskPlates {
-                    results.plates = try detectPlates(in: image, minConfidence: Float(options.plateConfidence))
+                    results.plates = try Self.search(image, tileSize: tiled ? 960 : nil) {
+                        try detectPlates(in: $0, minConfidence: Float(options.plateConfidence))
+                    }
                 } else if task == 1, options.maskFaces {
-                    results.faces = try faces.detect(in: image, threshold: Float(options.faceThreshold),
-                                                     maxSide: options.faceResolution.maxSide)
+                    let maxSide = options.faceResolution.maxSide
+                    // Faces are already analyzed at up to 2048 px: tiles only help larger images at full resolution.
+                    let tile: CGFloat? = tiled && options.faceResolution == .full ? maxSide : nil
+                    results.faces = try Self.search(image, tileSize: tile) {
+                        try faces.detect(in: $0, threshold: Float(options.faceThreshold), maxSide: maxSide)
+                    }
                 }
             } catch {
                 results.error = error
@@ -172,24 +179,50 @@ final class BlurEngine: @unchecked Sendable {
         return (detections, DetectionCount(plates: results.plates.count, faces: results.faces.count))
     }
 
-    /// Combines the last few frames' detections, newest first. An older detection is kept only where
-    /// nothing newer already masks that spot, so moving faces don't get a trail of stacked masks.
-    static func mergeHistory(_ history: [[Detection]]) -> [Detection] {
-        var merged: [Detection] = []
-        for frame in history.reversed() {
-            for detection in frame {
-                let covered = merged.contains { other in
-                    guard other.isFace == detection.isFace else { return false }
-                    let overlap = other.rect.intersection(detection.rect)
-                    guard !overlap.isNull else { return false }
-                    let intersection = overlap.width * overlap.height
-                    let union = other.rect.width * other.rect.height + detection.rect.width * detection.rect.height - intersection
-                    return intersection / union >= 0.3
-                }
-                if !covered { merged.append(detection) }
+    typealias Found = (rect: CGRect, score: Float)
+
+    /// Runs `detector` on the whole image and, when `tileSize` is set and the image is larger,
+    /// on overlapping tiles too; duplicates found in several passes are merged.
+    static func search(_ image: CIImage, tileSize: CGFloat?, _ detector: (CIImage) throws -> [Found]) rethrows -> [Found] {
+        var found = try detector(image)
+        guard let tileSize else { return found }
+        for tile in tiles(covering: image.extent, size: tileSize) {
+            let crop = image.cropped(to: tile).transformed(by: .init(translationX: -tile.minX, y: -tile.minY))
+            found += try detector(crop).map { ($0.rect.offsetBy(dx: tile.minX, dy: tile.minY), $0.score) }
+        }
+        return suppressDuplicates(found)
+    }
+
+    /// Tiles of `size` overlapping by 25%, covering `extent`; none when the image is barely larger than a tile.
+    static func tiles(covering extent: CGRect, size: CGFloat) -> [CGRect] {
+        guard max(extent.width, extent.height) > size * 1.25 else { return [] }
+        let step = size * 0.75
+        func starts(_ length: CGFloat) -> [CGFloat] {
+            guard length > size else { return [0] }
+            let count = Int(((length - size) / step).rounded(.up)) + 1
+            return (0..<count).map { min(CGFloat($0) * step, length - size) }
+        }
+        return starts(extent.height).flatMap { y in
+            starts(extent.width).map { x in
+                CGRect(x: extent.minX + x, y: extent.minY + y, width: min(size, extent.width), height: min(size, extent.height))
             }
         }
-        return merged
+    }
+
+    /// Keeps the best of overlapping boxes, including a partial box cut by a tile edge inside a full one.
+    static func suppressDuplicates(_ found: [Found]) -> [Found] {
+        var kept: [Found] = []
+        for candidate in found.sorted(by: { $0.score > $1.score }) {
+            let duplicate = kept.contains { other in
+                let overlap = other.rect.intersection(candidate.rect)
+                guard !overlap.isNull else { return false }
+                let intersection = overlap.width * overlap.height
+                let a = other.rect.width * other.rect.height, b = candidate.rect.width * candidate.rect.height
+                return intersection / (a + b - intersection) >= 0.4 || intersection / min(a, b) >= 0.7
+            }
+            if !duplicate { kept.append(candidate) }
+        }
+        return kept
     }
 
     /// Returns plate rectangles in the image's pixel coordinates (origin bottom-left, like Core Image).
@@ -312,7 +345,8 @@ final class BlurEngine: @unchecked Sendable {
         }
         image = image.transformed(by: .init(translationX: -image.extent.minX, y: -image.extent.minY))
 
-        let (detections, count) = try detect(in: image, options: options)
+        let (detections, count) = try detect(in: image, options: options, tiled: options.smallObjects != .off)
+        try Task.checkCancellation()
         let output = mask(image, detections: detections, options: options, replacement: replacement)
         if options.livePreview, let frame = makePreview(output) { preview(frame) }
 
@@ -376,8 +410,13 @@ final class BlurEngine: @unchecked Sendable {
     private final class VideoState: @unchecked Sendable {
         var pending: [PendingFrame] = []
         var readerFinished = false
-        var history: [[Detection]] = []
+        var cancelled = false
+        let tracker: Tracker
         var detections = DetectionCount()
+
+        init(tracker: Tracker) {
+            self.tracker = tracker
+        }
         var failure: Error?
         var lastPreview = Date.distantPast
     }
@@ -390,7 +429,8 @@ final class BlurEngine: @unchecked Sendable {
             throw EngineError.unreadable(src.lastPathComponent)
         }
         let audioTrack = options.keepAudio ? try await asset.loadTracks(withMediaType: .audio).first : nil
-        let (naturalSize, transform, dataRate) = try await videoTrack.load(.naturalSize, .preferredTransform, .estimatedDataRate)
+        let (naturalSize, transform, dataRate, frameRate) = try await videoTrack.load(
+            .naturalSize, .preferredTransform, .estimatedDataRate, .nominalFrameRate)
         let duration = max(try await asset.load(.duration).seconds, 0.001)
 
         // Frames are rotated upright before detection, then written upright with an identity transform.
@@ -457,7 +497,8 @@ final class BlurEngine: @unchecked Sendable {
         guard writer.startWriting() else { throw EngineError.writeFailed(writer.error?.localizedDescription ?? "unknown") }
         writer.startSession(atSourceTime: .zero)
 
-        let state = VideoState()
+        let state = VideoState(tracker: Tracker(maxMissed: max(3, Int((Double(frameRate) * Self.trackMemory).rounded()))))
+        let tiled = options.smallObjects == .all
         let group = DispatchGroup()
         let detectionQueue = DispatchQueue(label: "multiblur.detect", qos: .userInitiated, attributes: .concurrent)
 
@@ -477,10 +518,11 @@ final class BlurEngine: @unchecked Sendable {
                     let pending = PendingFrame(frame: frame, time: CMSampleBufferGetPresentationTimeStamp(sample), sample: sample)
                     state.pending.append(pending)
                     detectionQueue.async {
-                        pending.result = (try? self.detect(in: frame, options: options)) ?? ([], DetectionCount())
+                        pending.result = (try? self.detect(in: frame, options: options, tiled: tiled)) ?? ([], DetectionCount())
                         pending.done.signal()
                     }
                 }
+                if state.cancelled, state.failure == nil { state.failure = CancellationError() }
                 guard state.failure == nil, !state.pending.isEmpty else {
                     // Let in-flight detections finish before tearing down.
                     state.pending.forEach { $0.done.wait() }
@@ -494,10 +536,8 @@ final class BlurEngine: @unchecked Sendable {
                 autoreleasepool {
                     let (detections, count) = current.result
                     state.detections += count
-                    state.history.append(detections)
-                    if state.history.count > Self.persistFrames + 1 { state.history.removeFirst() }
-                    let masked = mask(current.frame, detections: Self.mergeHistory(state.history),
-                                      options: options, replacement: replacement)
+                    let tracked = state.tracker.update(with: detections)
+                    let masked = mask(current.frame, detections: tracked, options: options, replacement: replacement)
 
                     var buffer: CVPixelBuffer?
                     guard let pool = adaptor.pixelBufferPool,
@@ -535,12 +575,18 @@ final class BlurEngine: @unchecked Sendable {
             }
         }
 
-        await withCheckedContinuation { continuation in
-            group.notify(queue: .global()) { continuation.resume() }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                group.notify(queue: .global()) { continuation.resume() }
+            }
+        } onCancel: {
+            state.cancelled = true
         }
 
         if let failure = state.failure ?? (reader.status == .failed ? reader.error : nil) {
+            reader.cancelReading()
             writer.cancelWriting()
+            try? FileManager.default.removeItem(at: dst)
             throw failure
         }
         await writer.finishWriting()

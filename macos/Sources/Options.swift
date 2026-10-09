@@ -9,11 +9,11 @@ enum MaskMode: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .blur: "Blur"
-        case .mosaic: "Mosaic"
-        case .solid: "Black box"
-        case .image: "Image"
-        case .none: "None"
+        case .blur: String(localized: "Blur")
+        case .mosaic: String(localized: "Mosaic")
+        case .solid: String(localized: "Black box")
+        case .image: String(localized: "Image")
+        case .none: String(localized: "None")
         }
     }
 }
@@ -23,7 +23,7 @@ enum MaskShape: String, CaseIterable, Identifiable, Codable {
     case ellipse, box
 
     var id: String { rawValue }
-    var label: String { self == .ellipse ? "Ellipse" : "Box" }
+    var label: String { self == .ellipse ? String(localized: "Ellipse") : String(localized: "Box") }
 }
 
 /// Resolution used for face detection (deface's `--scale`); `full` analyzes frames at native size.
@@ -31,9 +31,24 @@ enum DetectionResolution: Int, CaseIterable, Identifiable, Codable {
     case full = 0, p1920 = 1920, p1280 = 1280, p640 = 640
 
     var id: Int { rawValue }
-    var label: String { self == .full ? "Full resolution" : "\(rawValue) px" }
+    var label: String { self == .full ? String(localized: "Full resolution") : "\(rawValue) px" }
     /// The CoreML face model accepts up to 2048 px per side.
     var maxSide: CGFloat { self == .full ? 2048 : CGFloat(rawValue) }
+}
+
+/// Extra detection passes on overlapping tiles, to find small or distant plates and faces.
+enum SmallObjectSearch: String, CaseIterable, Identifiable, Codable {
+    case off, photos, all
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: String(localized: "Off")
+        case .photos: String(localized: "Photos")
+        case .all: String(localized: "Photos & videos")
+        }
+    }
 }
 
 /// Output video codec (stands in for deface's `--ffmpeg-config`).
@@ -52,9 +67,9 @@ enum ComputeMode: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .all: "Neural Engine (fastest)"
-        case .gpu: "GPU"
-        case .cpu: "CPU only"
+        case .all: String(localized: "Neural Engine (fastest)")
+        case .gpu: String(localized: "GPU")
+        case .cpu: String(localized: "CPU only")
         }
     }
 
@@ -95,6 +110,7 @@ struct Options: Codable, Equatable {
     var faceMaskScale: Double = 1.3
     var plateMaskScale: Double = 1.15
     var faceResolution: DetectionResolution = .full
+    var smallObjects: SmallObjectSearch = .photos
 
     // Output (deface: --output, --keep-audio, --keep-metadata, --ffmpeg-config)
     var outputFolderPath: String?
@@ -116,8 +132,13 @@ struct Options: Codable, Equatable {
     static func load() -> Options {
         let saved = UserDefaults.standard.data(forKey: key)
             ?? UserDefaults(suiteName: legacyDomain)?.data(forKey: key)
+        // Overlay saved values on the defaults, so settings added in newer versions don't
+        // invalidate everything that was saved before.
         guard let data = saved,
-              let options = try? JSONDecoder().decode(Options.self, from: data) else { return Options() }
+              let defaults = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Options())) as? [String: Any],
+              let stored = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let merged = try? JSONSerialization.data(withJSONObject: defaults.merging(stored) { _, saved in saved }),
+              let options = try? JSONDecoder().decode(Options.self, from: merged) else { return Options() }
         return options
     }
 

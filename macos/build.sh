@@ -47,6 +47,7 @@ if COMMIT=$(git rev-parse HEAD 2>/dev/null); then
     plutil -insert MultiBlurCommit -string "$COMMIT" "$APP/Contents/Info.plist"
 fi
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"  # translations
 
 echo "→ Signing (ad hoc)"
 xattr -cr "$APP"  # extended attributes (e.g. Finder info) make codesign fail

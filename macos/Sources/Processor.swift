@@ -9,6 +9,7 @@ struct Job: Identifiable {
         case running(Double)
         case done(DetectionCount)
         case failed(String)
+        case cancelled
     }
 
     let id = UUID()
@@ -35,12 +36,14 @@ final class Processor: ObservableObject {
     @Published private(set) var preview: CGImage?
 
     private var engine: BlurEngine?
+    /// The job being processed and its task, so it can be cancelled.
+    private var current: (id: UUID, task: Task<DetectionCount, Error>)?
     private var isRunning = false
 
     var hasFinishedJobs: Bool {
         jobs.contains {
             switch $0.status {
-            case .done, .failed: true
+            case .done, .failed, .cancelled: true
             default: false
             }
         }
@@ -59,11 +62,17 @@ final class Processor: ObservableObject {
     func clearFinished() {
         jobs.removeAll {
             switch $0.status {
-            case .done, .failed: true
+            case .done, .failed, .cancelled: true
             default: false
             }
         }
         preview = nil
+    }
+
+    /// Stops the job being processed; its partial output is deleted.
+    func cancel(_ id: UUID) {
+        guard current?.id == id else { return }
+        current?.task.cancel()
     }
 
     func remove(_ id: UUID) {
@@ -96,19 +105,24 @@ final class Processor: ObservableObject {
             jobs[index].output = BlurEngine.outputURL(for: jobs[index].source, folder: outputFolder)
             let job = jobs[index]
             setStatus(.running(0), for: job.id)
+            let task = Task.detached(priority: .userInitiated) {
+                try await engine.process(job.source, to: job.output, options: options) { fraction in
+                    Task { @MainActor in self.setStatus(.running(fraction), for: job.id) }
+                } preview: { image in
+                    Task { @MainActor in self.preview = image }
+                }
+            }
+            current = (job.id, task)
             do {
-                let count = try await Task.detached(priority: .userInitiated) {
-                    try await engine.process(job.source, to: job.output, options: options) { fraction in
-                        Task { @MainActor in self.setStatus(.running(fraction), for: job.id) }
-                    } preview: { image in
-                        Task { @MainActor in self.preview = image }
-                    }
-                }.value
+                let count = try await task.value
                 setStatus(.done(count), for: job.id)
                 if let sound = options.completionSound { NSSound(named: sound)?.play() }
+            } catch is CancellationError {
+                setStatus(.cancelled, for: job.id)
             } catch {
                 setStatus(.failed(error.localizedDescription), for: job.id)
             }
+            current = nil
         }
     }
 
