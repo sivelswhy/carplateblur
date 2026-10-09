@@ -60,7 +60,7 @@ The plate weights are stored in `./models/`. After that the script is **100% off
 
 ## macOS app (PlateBlur)
 
-A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result; right-click for Show in Finder and Remove. Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
+A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result, click × to remove it from the list, or right-click for more. Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
 
 Every [deface](https://github.com/ORB-HD/deface) option is available: the masking ones in the main window, the others in **Settings** (⌘,), organized in Detection, Output and Advanced tabs. Settings are remembered between launches.
 

@@ -289,6 +289,7 @@ final class ThumbnailLoader: ObservableObject {
 
 struct JobRow: View {
     let job: Job
+    @EnvironmentObject private var processor: Processor
     @StateObject private var thumbnail = ThumbnailLoader()
 
     private var thumbnailURL: URL {
@@ -317,6 +318,18 @@ struct JobRow: View {
             }
             Spacer(minLength: 8)
             trailing
+            // Running jobs can't be removed; keep the space so rows stay aligned.
+            Button {
+                processor.remove(job.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove from list")
+            .opacity(job.isRunning ? 0 : 1)
+            .disabled(job.isRunning)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
