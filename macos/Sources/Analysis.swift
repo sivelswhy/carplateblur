@@ -20,6 +20,8 @@ struct Analysis: @unchecked Sendable {
 struct Edits: Sendable {
     var excludedGroups: Set<Int> = []
     var manual: [ManualMask] = []
+    /// Voice effect for this video's export; nil uses the one in Settings.
+    var voice: VoiceEffect?
 }
 
 /// A box drawn by hand; in videos it follows the object through the next frames.

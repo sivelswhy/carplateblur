@@ -22,6 +22,15 @@ final class EditorModel: ObservableObject {
     @Published private(set) var analysis: Analysis?
     @Published private(set) var excludedGroups: Set<Int> = []
     @Published private(set) var manual: [ManualMask] = []
+    /// Voice effect for this video's export (the editor's "Disguised voice" box); playback uses it too.
+    @Published var voice: VoiceEffect = .off {
+        didSet { if voice != oldValue { updateVoiceAudio() } }
+    }
+    /// The disguised sound is being prepared for playback.
+    @Published private(set) var isPreparingVoice = false
+    /// Processed sound per effect, so switching back is instant; deleted when the editor closes.
+    private var voiceFiles: [VoiceEffect: URL] = [:]
+    private var voiceTask: Task<Void, Never>?
     @Published private(set) var preview: CGImage?
     @Published var frameIndex = 0 {
         didSet { if !isPlaying { renderPreview() } }
@@ -49,13 +58,14 @@ final class EditorModel: ObservableObject {
     }
 
     /// The editor's changes, kept with the file on export.
-    var edits: Edits { Edits(excludedGroups: excludedGroups, manual: manual) }
+    var edits: Edits { Edits(excludedGroups: excludedGroups, manual: manual, voice: voice) }
 
     // MARK: Loading
 
     func load() async {
         do {
             replacement = try? engine.replacementImage(options)
+            voice = job.edits?.voice ?? options.voice
             let analysis: Analysis
             if let saved = job.analysis, let savedOptions = job.analysisOptions, savedOptions.sameDetection(as: options) {
                 // Reuse the analysis made during export, with the previous edits.
@@ -85,19 +95,14 @@ final class EditorModel: ObservableObject {
                    let transform = try? await track.load(.preferredTransform) {
                     orientation = BlurEngine.orientation(for: transform)
                 }
-                let item = AVPlayerItem(asset: asset)
-                let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                ])
-                item.add(output)
-                playerOutput = output
-                player = AVPlayer(playerItem: item)
+                await setPlayerItem(audio: nil)
             } else if let image = CIImage(contentsOf: job.source, options: [.applyOrientationProperty: true]) {
                 self.image = image.transformed(by: .init(translationX: -image.extent.minX, y: -image.extent.minY))
             }
             self.analysis = analysis
             phase = .ready
             renderPreview()
+            if voice != .off { updateVoiceAudio() }
         } catch {
             phase = .failed(error.localizedDescription)
         }
@@ -183,6 +188,82 @@ final class EditorModel: ObservableObject {
     }
 
     // MARK: Preview
+
+    // MARK: Disguised voice in playback
+
+    /// Prepares the sound with the chosen voice effect (same processing as export) and plays it with the video.
+    private func updateVoiceAudio() {
+        guard generator != nil else { return }  // videos only, once loaded
+        pause()
+        voiceTask?.cancel()
+        let effect = voice
+        voiceTask = Task {
+            var audio: URL?
+            if effect != .off {
+                if let cached = voiceFiles[effect] {
+                    audio = cached
+                } else {
+                    isPreparingVoice = true
+                    defer { isPreparingVoice = false }
+                    let source = AVURLAsset(url: job.source)
+                    guard let track = try? await source.loadTracks(withMediaType: .audio).first,
+                          let file = try? await Task.detached(priority: .userInitiated, operation: {
+                              try await VoiceChanger.process(track, of: source, effect: effect)
+                          }).value else { return }
+                    guard !Task.isCancelled else {
+                        try? FileManager.default.removeItem(at: file)
+                        return
+                    }
+                    voiceFiles[effect] = file
+                    audio = file
+                }
+            }
+            await setPlayerItem(audio: audio)
+        }
+    }
+
+    /// Plays the original video with either its own sound or a processed sound file.
+    private func setPlayerItem(audio: URL?) async {
+        let source = AVURLAsset(url: job.source)
+        var asset: AVAsset = source
+        // The processed sound's asset must stay alive while its track is inserted: a track doesn't
+        // retain its asset, and inserting from a released one fails, leaving playback silent.
+        let soundAsset = audio.map { AVURLAsset(url: $0) }
+        if let soundAsset,
+           let video = try? await source.loadTracks(withMediaType: .video).first,
+           let sound = try? await soundAsset.loadTracks(withMediaType: .audio).first,
+           let videoRange = try? await video.load(.timeRange),
+           let soundRange = try? await sound.load(.timeRange) {
+            let composition = AVMutableComposition()
+            if let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+               let soundTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                do {
+                    try videoTrack.insertTimeRange(videoRange, of: video, at: videoRange.start)
+                    videoTrack.preferredTransform = (try? await video.load(.preferredTransform)) ?? .identity
+                    let length = CMTimeMinimum(soundRange.duration, videoRange.end)
+                    try soundTrack.insertTimeRange(CMTimeRange(start: soundRange.start, duration: length), of: sound, at: .zero)
+                    asset = composition
+                } catch {
+                    // Keep the original sound rather than playing silently.
+                }
+            }
+        }
+        let item = AVPlayerItem(asset: asset)
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+        ])
+        item.add(output)
+        playerOutput = output
+        if let player { player.replaceCurrentItem(with: item) } else { player = AVPlayer(playerItem: item) }
+    }
+
+    /// Deletes the processed sound files (when the editor closes).
+    func cleanUp() {
+        pause()
+        voiceTask?.cancel()
+        voiceFiles.values.forEach { try? FileManager.default.removeItem(at: $0) }
+        voiceFiles = [:]
+    }
 
     // MARK: Playback
 

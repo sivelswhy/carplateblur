@@ -140,19 +140,23 @@ final class Processor: ObservableObject {
     }
 
     /// Moves a finished file's exported result (never the original) to the Trash, then removes it
-    /// from the list. Returns false if the file couldn't be moved.
-    @discardableResult
-    func trashOutput(_ id: UUID) -> Bool {
-        guard let job = job(id), case .done = job.status, !job.isRunning else { return false }
-        do {
-            if FileManager.default.fileExists(atPath: job.output.path) {
-                try FileManager.default.trashItem(at: job.output, resultingItemURL: nil)
+    /// from the list. Goes through the Finder, which can reach folders such as Downloads even when
+    /// this ad hoc signed app lost its access after an update (every build counts as a new app for
+    /// macOS privacy). If the file can't be moved, it stays in the list and an alert says why.
+    func trashOutput(_ id: UUID) {
+        guard let job = job(id), job.isDone else { return }
+        NSWorkspace.shared.recycle([job.output]) { _, error in
+            Task { @MainActor in
+                if let error = error as NSError?, error.code != NSFileNoSuchFileError {
+                    let alert = NSAlert(error: error)
+                    alert.messageText = String(localized: "Couldn't move “\(job.output.lastPathComponent)” to the Trash.")
+                    alert.runModal()
+                } else {
+                    // Moved, or already gone: either way it leaves the list.
+                    self.remove(id)
+                }
             }
-        } catch {
-            return false
         }
-        remove(id)
-        return true
     }
 
     func remove(_ id: UUID) {
@@ -199,7 +203,8 @@ final class Processor: ObservableObject {
     private func runQueue() async {
         while let index = jobs.firstIndex(where: { $0.status == .waiting }) {
             // Options are read per job, so changes apply from the next file in the queue.
-            let options = self.options
+            var options = self.options
+            if let voice = jobs[index].edits?.voice { options.voice = voice }  // chosen in the editor
             if engine?.compute != options.compute {
                 do {
                     engine = try BlurEngine(compute: options.compute)

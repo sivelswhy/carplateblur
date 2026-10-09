@@ -56,7 +56,7 @@ struct EditorView: View {
         .frame(minWidth: 820, minHeight: 560)
         .navigationTitle(model.job.source.lastPathComponent)
         .task { await model.load() }
-        .onDisappear { model.pause() }
+        .onDisappear { model.cleanUp() }
     }
 
     // MARK: Canvas
@@ -245,6 +245,28 @@ struct EditorView: View {
         .listStyle(.sidebar)
     }
 
+    /// "Disguised voice" box for this video, with the effect to use; applied when exporting.
+    private var voiceControl: some View {
+        HStack(spacing: 6) {
+            Toggle("Disguised voice", isOn: Binding(
+                get: { model.voice != .off },
+                set: { model.voice = $0 ? processor.options.preferredVoice : .off }
+            ))
+            .toggleStyle(.checkbox)
+            if model.voice != .off {
+                Picker("Voice effect", selection: $model.voice) {
+                    ForEach(VoiceEffect.allCases.filter { $0 != .off }) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+            if model.isPreparingVoice {
+                ProgressView().controlSize(.small).help("Preparing the disguised voice for playback…")
+            }
+        }
+        .help("Disguises voices in this video when exporting. Whisper and synthetic voice can't be reversed.")
+    }
+
     private var fullScreenButton: some View {
         Button { ui.window?.toggleFullScreen(nil) } label: {
             Image(systemName: ui.isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
@@ -263,6 +285,7 @@ struct EditorView: View {
                 .lineLimit(2)
             Spacer()
             if model.analysis?.isVideo == false { fullScreenButton.buttonStyle(.borderless) }
+            if model.analysis?.isVideo == true { voiceControl }
             if ui.isFullScreen {
                 // Escape leaves full screen instead of closing the editor.
                 Button("Cancel") { dismiss() }

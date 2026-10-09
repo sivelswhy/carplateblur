@@ -110,6 +110,13 @@ struct ControlBar: View {
                     get: { processor.options.maskFaces },
                     set: { if $0 || processor.options.maskPlates { processor.options.maskFaces = $0 } })
                 ) { Label("Faces", systemImage: "face.smiling") }
+                // Voices don't count as a detection target: they're disguised in exported videos.
+                Toggle(isOn: Binding(
+                    get: { processor.options.voice != .off },
+                    set: { processor.options.voice = $0 ? processor.options.preferredVoice : .off })
+                ) { Label("Voices", systemImage: "waveform") }
+                    .disabled(!processor.options.keepAudio)
+                    .help(processor.options.keepAudio ? "Disguise voices in exported videos" : "Turn on “Keep audio” in Settings to disguise voices")
 
                 Spacer()
 
@@ -189,6 +196,18 @@ struct MaskingOptions: View {
                 .help("Replacement image (deface --replaceimg): PNG, JPEG, SVG… Transparent areas show a blur, never the original.")
             default:
                 EmptyView()
+            }
+
+            if processor.options.voice != .off {
+                HStack(spacing: 6) {
+                    if labels { Text("Voice").fixedSize() }
+                    Picker("Voice", selection: $processor.options.voice) {
+                        ForEach(VoiceEffect.allCases.filter { $0 != .off }) { Text($0.label).tag($0) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                .help("Whisper and synthetic voice can't be reversed: the voice's pitch and timbre are discarded. Lower, higher and robot can partly be undone. Words stay understandable.")
             }
 
             Spacer(minLength: 0)
@@ -274,7 +293,7 @@ struct JobList: View {
                     } else {
                         Button("Remove from List") { processor.remove(job.id) }
                         if job.isDone {
-                            Button("Move Exported File to Trash") { if !processor.trashOutput(job.id) { NSSound.beep() } }
+                            Button("Move Exported File to Trash") { processor.trashOutput(job.id) }
                         }
                     }
                 }
@@ -350,8 +369,8 @@ struct JobRow: View {
             Button {
                 if job.isRunning {
                     processor.cancel(job.id)
-                } else if NSEvent.modifierFlags.contains(.command), job.isDone {
-                    if !processor.trashOutput(job.id) { NSSound.beep() }
+                } else if NSEvent.modifierFlags.contains(.command) || keys.command, job.isDone {
+                    processor.trashOutput(job.id)
                 } else {
                     processor.remove(job.id)
                 }
@@ -659,6 +678,11 @@ struct OutputSettings: View {
             Section("Videos") {
                 Toggle("Keep audio", isOn: $processor.options.keepAudio)
                     .help("deface --keep-audio")
+                Picker("Voices", selection: $processor.options.voice) {
+                    ForEach(VoiceEffect.allCases) { Text($0.label).tag($0) }
+                }
+                .disabled(!processor.options.keepAudio)
+                .help("Whisper and synthetic voice can't be reversed: the voice's pitch and timbre are discarded. Lower, higher and robot can partly be undone. Words stay understandable.")
                 Picker("Codec", selection: $processor.options.videoCodec) {
                     ForEach(VideoCodec.allCases) { Text($0.label).tag($0) }
                 }

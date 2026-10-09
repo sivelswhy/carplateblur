@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -439,13 +440,38 @@ def process_video(src: Path, dst: Path, detector: Detector, args, replacement) -
         writer.release()
     print()
 
-    _finalize_video(src, tmp_video, dst, keep_audio=not args.no_audio, codec=args.codec)
+    _finalize_video(src, tmp_video, dst, keep_audio=not args.no_audio, codec=args.codec, voice=args.voice)
     shutil.rmtree(tmp_dir, ignore_errors=True)
     print(f"  ✓ {src.name} → {dst}  ({n_frames} frames; detections: {summary(n_plates, n_faces, args.targets)})")
     return n_plates, n_faces
 
 
-def _finalize_video(src: Path, tmp_video: Path, dst: Path, keep_audio: bool = True, codec: str = "h264") -> None:
+VOICES = ("off", "lower", "higher", "robot", "whisper")
+PITCH_RATIO = 2 ** (5 / 12)  # 5 semitones, like the macOS app
+
+
+def voice_filter(voice: str) -> str | None:
+    """ffmpeg audio filter that disguises voices (pitch shift keeps the original speed)."""
+    if voice in ("lower", "higher"):
+        ratio = 1 / PITCH_RATIO if voice == "lower" else PITCH_RATIO
+        return f"aresample=44100,asetrate={44100 * ratio:.0f},aresample=44100,atempo={1 / ratio:.4f}"
+    if voice == "robot":
+        # Phase vocoder with zeroed phases: a metallic, robot-like voice.
+        return "afftfilt=real='hypot(re,im)*sin(0)':imag='hypot(re,im)*cos(0)':win_size=512:overlap=0.75"
+    if voice == "whisper":
+        # Irreversible: formants shifted by a random factor that is never stored, then very short frames
+        # get random phases, which erases pitch and fine timbre (a whisper). Speech stays understandable.
+        amount = random.uniform(1.12, 1.22)
+        ratio = amount if random.random() < 0.5 else 1 / amount
+        shift = f"aresample=44100,asetrate={44100 * ratio:.0f},aresample=44100,atempo={1 / ratio:.4f}"
+        whisper = ("afftfilt=real='hypot(re,im)*cos((random(0)*2-1)*2*3.14)'"
+                   ":imag='hypot(re,im)*sin((random(1)*2-1)*2*3.14)':win_size=128:overlap=0.8")
+        return f"{shift},{whisper}"
+    return None
+
+
+def _finalize_video(src: Path, tmp_video: Path, dst: Path, keep_audio: bool = True, codec: str = "h264",
+                    voice: str = "off") -> None:
     """Re-encodes to H.264/HEVC and, unless disabled, copies the original audio track when ffmpeg is available."""
     if not shutil.which("ffmpeg"):
         shutil.move(str(tmp_video), str(dst))
@@ -458,6 +484,7 @@ def _finalize_video(src: Path, tmp_video: Path, dst: Path, keep_audio: bool = Tr
         "-i", str(tmp_video), "-i", str(src),
         "-map", "0:v:0", *(["-map", "1:a?"] if keep_audio else []),
         *video, "-pix_fmt", "yuv420p",
+        *(["-af", voice_filter(voice)] if keep_audio and voice_filter(voice) else []),
         "-c:a", "aac", "-shortest", str(dst),
     ]
     if subprocess.run(cmd).returncode != 0:
@@ -536,6 +563,9 @@ def parse_args(argv=None):
     output = p.add_argument_group("output")
     output.add_argument("--no-audio", action="store_true", help="Video: remove the sound from the output")
     output.add_argument("--codec", choices=("h264", "hevc"), default="h264", help="Video codec (needs ffmpeg)")
+    output.add_argument("--voice", choices=VOICES, default="off",
+                        help="Video: disguise voices (5 semitones lower or higher, robot, or whisper, which can't be "
+                             "reversed); needs ffmpeg")
     output.add_argument("--keep-metadata", action="store_true", help="Keep image EXIF/GPS metadata (deface --keep-metadata)")
 
     runtime = p.add_argument_group("runtime")

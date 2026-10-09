@@ -119,6 +119,12 @@ struct Options: Codable, Equatable {
     /// macOS system sound played when each export finishes; nil = silent.
     var completionSound: String?
     var videoCodec: VideoCodec = .h264
+    /// Disguise voices in videos.
+    var voice: VoiceEffect = .off {
+        didSet { if voice != .off { preferredVoice = voice } }
+    }
+    /// The effect turning the Voices chip on brings back.
+    var preferredVoice: VoiceEffect = .whisper
 
     // Performance & display (deface: --backend / --execution-provider, --preview)
     var compute: ComputeMode = .all

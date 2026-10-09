@@ -173,6 +173,24 @@ def test_transparent_replacement_shows_blur_not_the_original():
     assert np.abs(frame.astype(int) - original.astype(int)).mean() > 30
 
 
+# Voices --------------------------------------------------------------------- #
+
+def test_voice_filters_keep_the_speed():
+    assert mb.voice_filter("off") is None
+    for voice in ("lower", "higher"):
+        f = mb.voice_filter(voice)
+        rate = int(f.split("asetrate=")[1].split(",")[0])
+        tempo = float(f.split("atempo=")[1])
+        assert rate / 44100 * tempo == pytest.approx(1, abs=1e-3)  # pitch changes, duration doesn't
+    assert "afftfilt" in mb.voice_filter("robot")
+
+
+def test_whisper_uses_random_phases_and_a_random_formant_shift():
+    filters = {mb.voice_filter("whisper") for _ in range(5)}
+    assert all("random(0)" in f and "asetrate=" in f for f in filters)
+    assert len(filters) > 1  # the formant shift changes on every export
+
+
 # Files ---------------------------------------------------------------------- #
 
 def test_unique_path_never_overwrites(tmp_path):

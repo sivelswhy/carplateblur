@@ -456,7 +456,7 @@ final class BlurEngine: @unchecked Sendable {
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw EngineError.unreadable(src.lastPathComponent)
         }
-        let audioTrack = options.keepAudio ? try await asset.loadTracks(withMediaType: .audio).first : nil
+        var audioTrack = options.keepAudio ? try await asset.loadTracks(withMediaType: .audio).first : nil
         let (naturalSize, transform, dataRate, frameRate) = try await videoTrack.load(
             .naturalSize, .preferredTransform, .estimatedDataRate, .nominalFrameRate)
         let duration = max(try await asset.load(.duration).seconds, 0.001)
@@ -497,6 +497,16 @@ final class BlurEngine: @unchecked Sendable {
         // accepts (e.g. 22.05 kHz mono HE-AAC from TikTok/Instagram cannot be encoded at 192 kbps).
         var audioOutput: AVAssetReaderTrackOutput?
         var audioInput: AVAssetWriterInput?
+        // Disguised voices: the sound is processed first into a temporary file, read by its own reader.
+        var audioReader: AVAssetReader?, voiceFile: URL?
+        defer { if let voiceFile { try? FileManager.default.removeItem(at: voiceFile) } }
+        if let track = audioTrack, options.voice != .off {
+            let file = try await VoiceChanger.process(track, of: asset, effect: options.voice)
+            voiceFile = file
+            let processed = AVURLAsset(url: file)
+            audioTrack = try await processed.loadTracks(withMediaType: .audio).first
+            audioReader = try AVAssetReader(asset: processed)
+        }
         if let audioTrack, let format = try await audioTrack.load(.formatDescriptions).first,
            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee {
             let channels = 2
@@ -513,8 +523,9 @@ final class BlurEngine: @unchecked Sendable {
                 AVEncoderBitRateKey: 192_000,
             ])
             input.expectsMediaDataInRealTime = false
-            if reader.canAdd(output), writer.canAdd(input) {
-                reader.add(output)
+            let soundReader = audioReader ?? reader
+            if soundReader.canAdd(output), writer.canAdd(input) {
+                soundReader.add(output)
                 writer.add(input)
                 audioOutput = output
                 audioInput = input
@@ -522,6 +533,9 @@ final class BlurEngine: @unchecked Sendable {
         }
 
         guard reader.startReading() else { throw reader.error ?? EngineError.unreadable(src.lastPathComponent) }
+        if let audioReader, !audioReader.startReading() {
+            throw audioReader.error ?? EngineError.writeFailed("could not read the processed sound")
+        }
         guard writer.startWriting() else { throw EngineError.writeFailed(writer.error?.localizedDescription ?? "unknown") }
         writer.startSession(atSourceTime: .zero)
 
@@ -630,6 +644,7 @@ final class BlurEngine: @unchecked Sendable {
 
         if let failure = state.failure ?? (reader.status == .failed ? reader.error : nil) {
             reader.cancelReading()
+            audioReader?.cancelReading()
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: dst)
             throw failure
