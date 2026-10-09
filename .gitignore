@@ -1,0 +1,8 @@
+.venv/
+.venv-export/
+__pycache__/
+models/
+macos/build/
+anonymized/
+*_anonymized.*
+.DS_Store
