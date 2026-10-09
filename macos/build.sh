@@ -50,6 +50,9 @@ if COMMIT=$(git rev-parse HEAD 2>/dev/null); then
 fi
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/*.lproj "$APP/Contents/Resources/"  # translations
+# The app redistributes third-party models: ship the licenses with it.
+cp ../LICENSE ../THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/LICENSES" && cp ../LICENSES/* "$APP/Contents/Resources/LICENSES/"
 
 echo "→ Signing (ad hoc)"
 xattr -cr "$APP"  # extended attributes (e.g. Finder info) make codesign fail

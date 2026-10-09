@@ -147,3 +147,12 @@ The app is ad hoc signed. To run it on another Mac, right-click it and choose **
 ## Limitations
 
 No detector is perfect. Plates or faces that are very small, heavily angled, blurred by motion or cut off at the frame edge can be missed (faces seen from behind or in profile are harder). Review the output before publishing anything sensitive, and lower the confidence threshold if plates slip through. At low thresholds the face detector also hides some face-like objects (round signs, traffic lights, textures): automatic filters tried for this (facial landmark checks, confirmation by Apple's person detector) also removed real faces in crowds, so they're not used.
+
+## License
+
+Copyright (C) 2026 sivelswhy
+
+MultiBlur is free software under the **GNU Affero General Public License v3.0** ([LICENSE](LICENSE)): you may use, study, share and modify it, provided that distributed or network-served versions keep the same license and make their source code available. The AGPL is required by the YOLO license plate model and Ultralytics, which use it.
+
+Third-party models and code (CenterFace, deface, SFace) keep their own MIT and Apache 2.0 licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
