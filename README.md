@@ -12,7 +12,7 @@ Two front-ends share the same detectors:
 
 ## Download
 
-Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivelswhy/carplateblur/releases/latest) (macOS 14+, Apple Silicon or Intel). Unzip it, move MultiBlur.app to Applications and open it once with right-click → Open (or System Settings → Privacy & Security → Open Anyway): the app is ad hoc signed, not notarized.
+Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivelswhy/multiblur/releases/latest) (macOS 14+, Apple Silicon or Intel). Unzip it, move MultiBlur.app to Applications and open it once with right-click → Open (or System Settings → Privacy & Security → Open Anyway): the app is ad hoc signed, not notarized.
 
 The detection models are included in the app, which never touches the network.
 
