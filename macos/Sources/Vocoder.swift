@@ -108,7 +108,7 @@ struct Vocoder {
         let speechPower = Self.powerSpectrum(speech, fft: fft)
         let carrierFrame = vDSP.multiply(carrier.next(n), window)
         var (carrierReal, carrierImaginary) = Self.spectrum(carrierFrame, fft: fft)
-        let carrierPower = (0..<half).map { carrierReal[$0] * carrierReal[$0] + carrierImaginary[$0] * carrierImaginary[$0] }
+        let carrierPower: [Float] = vDSP.add(vDSP.square(carrierReal), vDSP.square(carrierImaginary))
 
         // Band envelopes (amplitude per band) of the speech and of the source.
         let speechBands = bands.map { $0.amplitude(of: speechPower) }
@@ -159,7 +159,7 @@ struct Vocoder {
 
     private static func powerSpectrum(_ signal: [Float], fft: vDSP.FFT<DSPSplitComplex>) -> [Float] {
         let (real, imaginary) = spectrum(signal, fft: fft)
-        var power = (0..<real.count).map { real[$0] * real[$0] + imaginary[$0] * imaginary[$0] }
+        var power: [Float] = vDSP.add(vDSP.square(real), vDSP.square(imaginary))
         power[0] = real[0] * real[0]  // the packed Nyquist value isn't part of the DC bin
         return power
     }
