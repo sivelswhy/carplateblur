@@ -1,4 +1,4 @@
-// Draws the PlateBlur app icon and writes Resources/AppIcon.icns.
+// Draws the MultiBlur app icon and writes Resources/AppIcon.icns.
 // Usage: swift tools/make_icon.swift <output.icns> [preview.png]
 import AppKit
 import CoreGraphics

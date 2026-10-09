@@ -6,3 +6,4 @@ macos/build/
 anonymized/
 *_anonymized.*
 .DS_Store
+MultiBlur-models-*.zip

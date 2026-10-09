@@ -67,6 +67,14 @@ enum ComputeMode: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum CompletionSound {
+    /// The built-in macOS alert sounds (Glass, Ping, Hero…), as listed in /System/Library/Sounds.
+    static let available: [String] = {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Library/Sounds")) ?? []
+        return files.filter { $0.hasSuffix(".aiff") }.map { String($0.dropLast(5)) }.sorted()
+    }()
+}
+
 /// Every user-facing setting. Defaults mirror deface's where an equivalent exists.
 /// Persisted as JSON in UserDefaults.
 struct Options: Codable, Equatable {
@@ -92,6 +100,8 @@ struct Options: Codable, Equatable {
     var outputFolderPath: String?
     var keepAudio = true
     var keepMetadata = false
+    /// macOS system sound played when each export finishes; nil = silent.
+    var completionSound: String?
     var videoCodec: VideoCodec = .h264
 
     // Performance & display (deface: --backend / --execution-provider, --preview)
@@ -100,8 +110,13 @@ struct Options: Codable, Equatable {
 
     private static let key = "options"
 
+    /// Settings saved before the app was renamed from PlateBlur to MultiBlur.
+    private static let legacyDomain = "com.carplateblur.PlateBlur"
+
     static func load() -> Options {
-        guard let data = UserDefaults.standard.data(forKey: key),
+        let saved = UserDefaults.standard.data(forKey: key)
+            ?? UserDefaults(suiteName: legacyDomain)?.data(forKey: key)
+        guard let data = saved,
               let options = try? JSONDecoder().decode(Options.self, from: data) else { return Options() }
         return options
     }

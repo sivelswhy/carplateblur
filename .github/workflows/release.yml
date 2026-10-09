@@ -1,0 +1,48 @@
+name: Build & Release
+
+# Every push to main builds a universal MultiBlur.app and publishes it as a GitHub release.
+# The detection models aren't built here: the app downloads them on first launch from the
+# "models-v1" release (see scripts/package_models.sh).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build MultiBlur.app (Apple Silicon + Intel)
+        run: ARCHS="arm64 x86_64" BUILD_NUMBER=${{ github.run_number }} BUNDLE_MODELS=0 macos/build.sh
+
+      - name: Package
+        run: ditto -c -k --keepParent macos/build/MultiBlur.app MultiBlur-macOS.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          {
+            echo "Built from $(git rev-parse --short HEAD): $(git log -1 --pretty=%s)"
+            echo
+            echo "**Install**: unzip, move MultiBlur.app to Applications, then open it once with right-click → Open"
+            echo "(or System Settings → Privacy & Security → Open Anyway), since the app is not notarized."
+            echo "On first launch, MultiBlur asks to download its detection models (21 MB); after that it works offline."
+            echo
+            echo "Requires macOS 14 or later, Apple Silicon or Intel."
+          } > notes.md
+          gh release create "$TAG" MultiBlur-macOS.zip \
+            --target "$GITHUB_SHA" \
+            --title "MultiBlur 1.0.${{ github.run_number }}" \
+            --notes-file notes.md \
+            --latest

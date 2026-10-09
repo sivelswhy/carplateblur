@@ -51,8 +51,9 @@ final class FaceDetector: @unchecked Sendable {
         var area: Float { (x2 - x1) * (y2 - y1) }
     }
 
-    /// A [1, C, H, W] model output copied into a dense Float array. Reads Float16 directly:
-    /// the generic MLShapedArray conversion cost ~20 ms per frame.
+    /// A [1, C, H, W] model output copied into a dense Float array. Reads Float16 bits directly
+    /// (the generic MLShapedArray conversion cost ~20 ms per frame, and Swift's Float16 type
+    /// is unavailable on Intel Macs).
     private struct FeatureMap {
         let rows: Int, cols: Int
         let values: [Float]
@@ -63,22 +64,39 @@ final class FaceDetector: @unchecked Sendable {
             rows = shape[2]
             cols = shape[3]
             var values = [Float](repeating: 0, count: channels * rows * cols)
-            func copy<T: MLShapedArrayScalar>(_ type: T.Type, _ convert: (T) -> Float) {
-                array.withUnsafeBufferPointer(ofType: type) { source in
-                    var i = 0
-                    for c in 0..<channels {
-                        for r in 0..<shape[2] {
-                            let row = c * strides[1] + r * strides[2]
-                            for col in 0..<shape[3] {
-                                values[i] = convert(source[row + col * strides[3]])
-                                i += 1
-                            }
+            let isHalf = array.dataType == .float16
+            array.withUnsafeBytes { raw in
+                var i = 0
+                for c in 0..<channels {
+                    for r in 0..<shape[2] {
+                        let row = c * strides[1] + r * strides[2]
+                        for col in 0..<shape[3] {
+                            let index = row + col * strides[3]
+                            values[i] = isHalf
+                                ? Self.float(fromHalf: raw.load(fromByteOffset: index * 2, as: UInt16.self))
+                                : raw.load(fromByteOffset: index * 4, as: Float.self)
+                            i += 1
                         }
                     }
                 }
             }
-            if array.dataType == .float16 { copy(Float16.self) { Float($0) } } else { copy(Float.self) { $0 } }
             self.values = values
+        }
+
+        /// IEEE 754 half → single precision.
+        @inline(__always) private static func float(fromHalf h: UInt16) -> Float {
+            let sign = UInt32(h & 0x8000) << 16
+            let exponent = UInt32(h >> 10) & 0x1F
+            let mantissa = UInt32(h & 0x3FF)
+            switch exponent {
+            case 0:  // zero or subnormal
+                let magnitude = Float(mantissa) * 0x1p-24
+                return sign == 0 ? magnitude : -magnitude
+            case 31:  // infinity or NaN
+                return Float(bitPattern: sign | 0x7F80_0000 | (mantissa << 13))
+            default:
+                return Float(bitPattern: sign | ((exponent + 112) << 23) | (mantissa << 13))
+            }
         }
     }
 

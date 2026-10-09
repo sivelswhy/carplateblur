@@ -12,12 +12,12 @@ Runs fully offline once the plate model has been fetched with --download
 (the face model ships inside the deface package).
 
 Examples:
-    python plate_anonymizer.py --download s                    # one-time, needs Internet
-    python plate_anonymizer.py photo.jpg                       # plates + faces, blurred
-    python plate_anonymizer.py photo.jpg --mode black          # black boxes
-    python plate_anonymizer.py photo.jpg --targets plates      # plates only
-    python plate_anonymizer.py video.mp4 --mode pixelate -o out.mp4
-    python plate_anonymizer.py photos/ --mode blur --conf 0.2
+    python multiblur.py --download s                    # one-time, needs Internet
+    python multiblur.py photo.jpg                       # plates + faces, blurred
+    python multiblur.py photo.jpg --mode black          # black boxes
+    python multiblur.py photo.jpg --targets plates      # plates only
+    python multiblur.py video.mp4 --mode pixelate -o out.mp4
+    python multiblur.py photos/ --mode blur --conf 0.2
 """
 
 from __future__ import annotations

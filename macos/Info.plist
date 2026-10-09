@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>PlateBlur</string>
-    <key>CFBundleDisplayName</key><string>PlateBlur</string>
-    <key>CFBundleIdentifier</key><string>com.carplateblur.PlateBlur</string>
-    <key>CFBundleExecutable</key><string>PlateBlur</string>
+    <key>CFBundleName</key><string>MultiBlur</string>
+    <key>CFBundleDisplayName</key><string>MultiBlur</string>
+    <key>CFBundleIdentifier</key><string>com.multiblur.MultiBlur</string>
+    <key>CFBundleExecutable</key><string>MultiBlur</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>

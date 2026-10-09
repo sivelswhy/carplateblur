@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import UniformTypeIdentifiers
@@ -33,7 +34,7 @@ final class Processor: ObservableObject {
     @Published private(set) var engineError: String?
     @Published private(set) var preview: CGImage?
 
-    private var engine: PlateEngine?
+    private var engine: BlurEngine?
     private var isRunning = false
 
     var hasFinishedJobs: Bool {
@@ -84,7 +85,7 @@ final class Processor: ObservableObject {
             let options = self.options
             if engine?.compute != options.compute {
                 do {
-                    engine = try PlateEngine(compute: options.compute)
+                    engine = try BlurEngine(compute: options.compute)
                 } catch {
                     engineError = error.localizedDescription
                     return
@@ -92,7 +93,7 @@ final class Processor: ObservableObject {
             }
             guard let engine else { return }
 
-            jobs[index].output = PlateEngine.outputURL(for: jobs[index].source, folder: outputFolder)
+            jobs[index].output = BlurEngine.outputURL(for: jobs[index].source, folder: outputFolder)
             let job = jobs[index]
             setStatus(.running(0), for: job.id)
             do {
@@ -104,6 +105,7 @@ final class Processor: ObservableObject {
                     }
                 }.value
                 setStatus(.done(count), for: job.id)
+                if let sound = options.completionSound { NSSound(named: sound)?.play() }
             } catch {
                 setStatus(.failed(error.localizedDescription), for: job.id)
             }

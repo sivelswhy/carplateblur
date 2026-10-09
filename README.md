@@ -1,14 +1,22 @@
-# carplateblur
+# MultiBlur
 
-Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, **pixelation** or a **black box**. Everything runs **fully offline** once the models have been downloaded.
+Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, **pixelation** or a **black box**. Everything runs **fully offline** once the models have been downloaded (once).
 
 - **Plates**: YOLOv11 fine-tuned on license plates from many countries.
 - **Faces**: CenterFace from [deface](https://github.com/ORB-HD/deface).
 
 Two front-ends share the same detectors:
 
-- `plate_anonymizer.py`: a cross-platform Python CLI.
-- `macos/`: **PlateBlur**, a native macOS app (SwiftUI + CoreML + Vision + AVFoundation) with no Python dependency.
+- `multiblur.py`: a cross-platform Python CLI.
+- `macos/`: **MultiBlur**, a native macOS app (SwiftUI + CoreML + Vision + AVFoundation) with no Python dependency.
+
+## Download
+
+Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivelswhy/carplateblur/releases/latest) (macOS 14+, Apple Silicon or Intel). Unzip it, move MultiBlur.app to Applications and open it once with right-click → Open (or System Settings → Privacy & Security → Open Anyway): the app is ad hoc signed, not notarized.
+
+On first launch MultiBlur asks to download its two detection models (21 MB, from the [models-v1](https://github.com/sivelswhy/carplateblur/releases/tag/models-v1) release, SHA-256 verified) into `~/Library/Application Support/MultiBlur`. After that it never touches the network.
+
+Every push to `main` builds a universal app and publishes it as a new release ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
 ## Python CLI
 
@@ -22,8 +30,8 @@ uv venv --python 3.12 .venv && uv pip install -r requirements.txt
 Then, **once** (this is the only step that needs Internet; the face model ships inside the `deface` package):
 
 ```bash
-.venv/bin/python plate_anonymizer.py --download        # all 5 sizes (~250 MB)
-.venv/bin/python plate_anonymizer.py --download n s    # or just some of them
+.venv/bin/python multiblur.py --download        # all 5 sizes (~250 MB)
+.venv/bin/python multiblur.py --download n s    # or just some of them
 ```
 
 The plate weights are stored in `./models/`. After that the script is **100% offline**: Ultralytics telemetry and Hugging Face calls are disabled (`YOLO_OFFLINE`, `HF_HUB_OFFLINE`). For an air-gapped machine, copy the project folder including `models/` and install dependencies from wheels (`pip download -r requirements.txt -d wheels`, then `pip install --no-index -f wheels -r requirements.txt`).
@@ -33,11 +41,11 @@ The plate weights are stored in `./models/`. After that the script is **100% off
 ### Usage
 
 ```bash
-.venv/bin/python plate_anonymizer.py photo.jpg                     # plates + faces, blurred → photo_anonymized.jpg
-.venv/bin/python plate_anonymizer.py photo.jpg --mode black        # black boxes
-.venv/bin/python plate_anonymizer.py photo.jpg --targets faces     # faces only
-.venv/bin/python plate_anonymizer.py video.mov --mode pixelate -o out.mp4
-.venv/bin/python plate_anonymizer.py folder/                       # → folder/anonymized/
+.venv/bin/python multiblur.py photo.jpg                     # plates + faces, blurred → photo_anonymized.jpg
+.venv/bin/python multiblur.py photo.jpg --mode black        # black boxes
+.venv/bin/python multiblur.py photo.jpg --targets faces     # faces only
+.venv/bin/python multiblur.py video.mov --mode pixelate -o out.mp4
+.venv/bin/python multiblur.py folder/                       # → folder/anonymized/
 ```
 
 | Option | Default | Description |
@@ -58,13 +66,13 @@ The plate weights are stored in `./models/`. After that the script is **100% off
 | `--weights` | — | Custom YOLO weights |
 | `--download` | — | Download model weights and exit |
 
-## macOS app (PlateBlur)
+## macOS app (MultiBlur)
 
 A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result, click × to remove it from the list, or right-click for more. Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
 
 Every [deface](https://github.com/ORB-HD/deface) option is available: the masking ones in the main window, the others in **Settings** (⌘,), organized in Detection, Output and Advanced tabs. Settings are remembered between launches.
 
-| deface | PlateBlur | Default |
+| deface | MultiBlur | Default |
 |---|---|---|
 | `--thresh` | Face threshold | 0.2 |
 | `--replacewith blur/solid/mosaic/img/none` | Replace with: Blur / Black box / Mosaic / Image / None (applies to plates too) | Blur |
@@ -81,6 +89,8 @@ Every [deface](https://github.com/ORB-HD/deface) option is available: the maskin
 | `--ffmpeg-config` | Video codec: H.264 / HEVC | H.264 |
 | `--backend`, `--execution-provider` | Run models on: Neural Engine / GPU / CPU | Neural Engine |
 
+Also in Settings › Output: **Sound when done** plays a macOS system sound (Glass, Ping, Hero…) after each export (off by default).
+
 Plate-specific settings: plate confidence (default 0.05) and plate mask scale (1.15×). The webcam mode (`deface cam`) is not included.
 
 - Detection runs on the Neural Engine / GPU through CoreML and Vision. Faces use deface's `centerface.onnx` converted to CoreML, with its decoding and NMS ported to Swift (`macos/Sources/FaceDetector.swift`); outputs match the Python version.
@@ -94,9 +104,11 @@ Only the Xcode Command Line Tools are needed (`xcode-select --install`), not Xco
 
 ```bash
 scripts/export_coreml.sh        # once: converts the plate and face models to CoreML (models/*.mlpackage)
-macos/build.sh                  # → macos/build/PlateBlur.app (icon: macos/Resources/AppIcon.icns, drawn by macos/tools/make_icon.swift)
-open macos/build/PlateBlur.app
+macos/build.sh                  # → macos/build/MultiBlur.app (icon: macos/Resources/AppIcon.icns, drawn by macos/tools/make_icon.swift)
+open macos/build/MultiBlur.app
 ```
+
+Builds embed the models when `models/` has them; otherwise (or with `BUNDLE_MODELS=0`) the app downloads them on first launch. `ARCHS="arm64 x86_64"` builds a universal app. To publish new models, run `scripts/package_models.sh v2`, upload the zip as a `models-v2` release and update the version and SHA-256 in `macos/Sources/ModelStore.swift`.
 
 `export_coreml.sh` uses a separate `.venv-export` environment because `coremltools` requires torch 2.7. CenterFace is converted with `scripts/export_centerface.py` (ONNX → PyTorch via `onnx2torch` → CoreML, flexible input size up to 2048 px). Pass a size to export another model (`scripts/export_coreml.sh m`), then point `MODEL` in `macos/build.sh` to it.
 

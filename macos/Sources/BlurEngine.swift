@@ -18,7 +18,7 @@ enum EngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelMissing: "Detection models not found in the app bundle."
+        case .modelMissing: "Detection models are missing. Relaunch MultiBlur to download them."
         case .unreadable(let name): "Cannot read \(name)."
         case .unsupported: "Unsupported file type."
         case .writeFailed(let reason): "Could not write output: \(reason)"
@@ -47,7 +47,7 @@ struct Detection {
 
 /// Detects license plates (YOLOv11 via Vision) and faces (CenterFace from deface), then masks them
 /// with Core Image. Runs entirely on-device; no network access.
-final class PlateEngine: @unchecked Sendable {
+final class BlurEngine: @unchecked Sendable {
     /// Video: number of frames a detection stays masked (prevents flicker on missed frames).
     private static let persistFrames = 3
     private static let previewInterval: TimeInterval = 0.15
@@ -60,8 +60,8 @@ final class PlateEngine: @unchecked Sendable {
     private let videoContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
 
     init(compute: ComputeMode) throws {
-        guard let plateURL = Bundle.main.url(forResource: "PlateDetector", withExtension: "mlmodelc"),
-              let faceURL = Bundle.main.url(forResource: "CenterFace", withExtension: "mlmodelc") else {
+        guard let plateURL = ModelStore.url(for: "PlateDetector"),
+              let faceURL = ModelStore.url(for: "CenterFace") else {
             throw EngineError.modelMissing
         }
         self.compute = compute
@@ -459,10 +459,10 @@ final class PlateEngine: @unchecked Sendable {
 
         let state = VideoState()
         let group = DispatchGroup()
-        let detectionQueue = DispatchQueue(label: "plateblur.detect", qos: .userInitiated, attributes: .concurrent)
+        let detectionQueue = DispatchQueue(label: "multiblur.detect", qos: .userInitiated, attributes: .concurrent)
 
         group.enter()
-        videoInput.requestMediaDataWhenReady(on: DispatchQueue(label: "plateblur.video", qos: .userInitiated)) { [self] in
+        videoInput.requestMediaDataWhenReady(on: DispatchQueue(label: "multiblur.video", qos: .userInitiated)) { [self] in
             while videoInput.isReadyForMoreMediaData {
                 // Keep a few frames detecting ahead of the one being encoded, so the GPU, Neural Engine
                 // and video encoder all stay busy instead of waiting on each other.
@@ -523,7 +523,7 @@ final class PlateEngine: @unchecked Sendable {
 
         if let audioOutput, let audioInput {
             group.enter()
-            audioInput.requestMediaDataWhenReady(on: DispatchQueue(label: "plateblur.audio")) {
+            audioInput.requestMediaDataWhenReady(on: DispatchQueue(label: "multiblur.audio")) {
                 while audioInput.isReadyForMoreMediaData {
                     guard state.failure == nil, let sample = audioOutput.copyNextSampleBuffer() else {
                         audioInput.markAsFinished()
