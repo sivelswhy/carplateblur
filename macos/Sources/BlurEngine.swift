@@ -43,6 +43,18 @@ struct Detection {
     var rect: CGRect
     var score: Float
     var isFace: Bool
+    /// Track identifier in videos (stable across frames), index in images.
+    var id = 0
+    /// Faces: eyes, nose and mouth corners (Core Image coordinates), used to recognize people in the editor.
+    var landmarks: [CGPoint] = []
+    /// The detected box itself, before the mask scale enlarges it. Tracking compares these: enlarged
+    /// masks of faces side by side overlap, which let a track jump to the neighbor.
+    var core: CGRect?
+}
+
+/// What to mask, decided ahead of export by the editor: one list of areas per video frame (one for images).
+struct MaskPlan: Sendable {
+    var frames: [[Detection]]
 }
 
 /// Detects license plates (YOLOv11 via Vision) and faces (CenterFace from deface), then masks them
@@ -55,7 +67,9 @@ final class BlurEngine: @unchecked Sendable {
     let compute: ComputeMode
     private let plateModel: VNCoreMLModel
     private let faces: FaceDetector
-    private let imageContext = CIContext()
+    /// Face recognition for the editor; optional so the app still works without that model.
+    let embedder: FaceEmbedder?
+    let imageContext = CIContext()
     // Video frames are masked in the decoder's native color space: no conversion round-trip.
     private let videoContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
 
@@ -74,6 +88,8 @@ final class BlurEngine: @unchecked Sendable {
             "confidenceThreshold": 0.05,
         ])
         faces = try FaceDetector(url: faceURL, computeUnits: compute.computeUnits)
+        embedder = Bundle.main.url(forResource: "SFace", withExtension: "mlmodelc")
+            .flatMap { try? FaceEmbedder(url: $0, computeUnits: compute.computeUnits) }
     }
 
     static func outputURL(for url: URL, folder: URL?) -> URL {
@@ -94,24 +110,24 @@ final class BlurEngine: @unchecked Sendable {
     }
 
     /// Processes an image or a video. `preview` receives downscaled processed frames when live preview is on.
-    func process(_ src: URL, to dst: URL, options: Options,
+    func process(_ src: URL, to dst: URL, options: Options, plan: MaskPlan? = nil, collector: AnalysisCollector? = nil,
                  progress: @escaping @Sendable (Double) -> Void,
                  preview: @escaping @Sendable (CGImage) -> Void) async throws -> DetectionCount {
         guard let type = UTType(filenameExtension: src.pathExtension) else { throw EngineError.unsupported }
-        let replacement = try loadReplacementImage(options)
+        let replacement = try replacementImage(options)
         if type.conforms(to: .movie) {
-            return try await processVideo(src, to: dst, options: options, replacement: replacement,
+            return try await processVideo(src, to: dst, options: options, plan: plan, collector: collector, replacement: replacement,
                                           progress: progress, preview: preview)
         }
         if type.conforms(to: .image) {
-            let count = try processImage(src, to: dst, options: options, replacement: replacement, preview: preview)
+            let count = try processImage(src, to: dst, options: options, plan: plan, replacement: replacement, preview: preview)
             progress(1)
             return count
         }
         throw EngineError.unsupported
     }
 
-    private func loadReplacementImage(_ options: Options) throws -> CIImage? {
+    func replacementImage(_ options: Options) throws -> CIImage? {
         guard options.mode == .image else { return nil }
         guard let path = options.replacementImagePath else { throw EngineError.replacementImageMissing }
         let url = URL(fileURLWithPath: path)
@@ -144,8 +160,8 @@ final class BlurEngine: @unchecked Sendable {
     func detect(in image: CIImage, options: Options, tiled: Bool = false) throws -> ([Detection], DetectionCount) {
         // Plates (Vision, Neural Engine) and faces (CenterFace, GPU) use different hardware: run them side by side.
         final class Results: @unchecked Sendable {
-            var plates: [(rect: CGRect, score: Float)] = []
-            var faces: [(rect: CGRect, score: Float)] = []
+            var plates: [Found] = []
+            var faces: [Found] = []
             var error: Error?
         }
         let results = Results()
@@ -153,7 +169,7 @@ final class BlurEngine: @unchecked Sendable {
             do {
                 if task == 0, options.maskPlates {
                     results.plates = try Self.search(image, tileSize: tiled ? 960 : nil) {
-                        try detectPlates(in: $0, minConfidence: Float(options.plateConfidence))
+                        try detectPlates(in: $0, minConfidence: Float(options.plateConfidence)).map { ($0.rect, $0.score, []) }
                     }
                 } else if task == 1, options.maskFaces {
                     let maxSide = options.faceResolution.maxSide
@@ -174,12 +190,14 @@ final class BlurEngine: @unchecked Sendable {
             let s = CGFloat(scale - 1)
             return rect.insetBy(dx: -rect.width * s, dy: -rect.height * s)
         }
-        let detections = results.plates.map { Detection(rect: enlarge($0.rect, scale: options.plateMaskScale), score: $0.score, isFace: false) }
-            + results.faces.map { Detection(rect: enlarge($0.rect, scale: options.faceMaskScale), score: $0.score, isFace: true) }
+        let detections = results.plates.map { Detection(rect: enlarge($0.rect, scale: options.plateMaskScale), score: $0.score, isFace: false,
+                                                        core: $0.rect) }
+            + results.faces.map { Detection(rect: enlarge($0.rect, scale: options.faceMaskScale), score: $0.score, isFace: true,
+                                            landmarks: $0.landmarks, core: $0.rect) }
         return (detections, DetectionCount(plates: results.plates.count, faces: results.faces.count))
     }
 
-    typealias Found = (rect: CGRect, score: Float)
+    typealias Found = (rect: CGRect, score: Float, landmarks: [CGPoint])
 
     /// Runs `detector` on the whole image and, when `tileSize` is set and the image is larger,
     /// on overlapping tiles too; duplicates found in several passes are merged.
@@ -188,7 +206,10 @@ final class BlurEngine: @unchecked Sendable {
         guard let tileSize else { return found }
         for tile in tiles(covering: image.extent, size: tileSize) {
             let crop = image.cropped(to: tile).transformed(by: .init(translationX: -tile.minX, y: -tile.minY))
-            found += try detector(crop).map { ($0.rect.offsetBy(dx: tile.minX, dy: tile.minY), $0.score) }
+            found += try detector(crop).map { found in
+                (found.rect.offsetBy(dx: tile.minX, dy: tile.minY), found.score,
+                 found.landmarks.map { CGPoint(x: $0.x + tile.minX, y: $0.y + tile.minY) })
+            }
         }
         return suppressDuplicates(found)
     }
@@ -338,14 +359,15 @@ final class BlurEngine: @unchecked Sendable {
 
     // MARK: - Images
 
-    private func processImage(_ src: URL, to dst: URL, options: Options, replacement: CIImage?,
+    private func processImage(_ src: URL, to dst: URL, options: Options, plan: MaskPlan?, replacement: CIImage?,
                               preview: @Sendable (CGImage) -> Void) throws -> DetectionCount {
         guard var image = CIImage(contentsOf: src, options: [.applyOrientationProperty: true]) else {
             throw EngineError.unreadable(src.lastPathComponent)
         }
         image = image.transformed(by: .init(translationX: -image.extent.minX, y: -image.extent.minY))
 
-        let (detections, count) = try detect(in: image, options: options, tiled: options.smallObjects != .off)
+        let (detections, count) = try plan?.frames.first.map { ($0, Self.count($0)) }
+            ?? detect(in: image, options: options, tiled: options.smallObjects != .off)
         try Task.checkCancellation()
         let output = mask(image, detections: detections, options: options, replacement: replacement)
         if options.livePreview, let frame = makePreview(output) { preview(frame) }
@@ -397,6 +419,9 @@ final class BlurEngine: @unchecked Sendable {
         let frame: CIImage
         let time: CMTime
         let sample: CMSampleBuffer  // keeps the decoded pixels alive until the frame is encoded
+        var index = 0
+        /// Areas decided in the editor for this frame; detection and tracking are skipped.
+        var planned: [Detection]?
         var result: ([Detection], DetectionCount) = ([], DetectionCount())
         let done = DispatchSemaphore(value: 0)
 
@@ -411,6 +436,8 @@ final class BlurEngine: @unchecked Sendable {
         var pending: [PendingFrame] = []
         var readerFinished = false
         var cancelled = false
+        var nextIndex = 0
+        let cuts = CutDetector()
         let tracker: Tracker
         var detections = DetectionCount()
 
@@ -421,7 +448,8 @@ final class BlurEngine: @unchecked Sendable {
         var lastPreview = Date.distantPast
     }
 
-    private func processVideo(_ src: URL, to dst: URL, options: Options, replacement: CIImage?,
+    private func processVideo(_ src: URL, to dst: URL, options: Options, plan: MaskPlan?, collector: AnalysisCollector?,
+                              replacement: CIImage?,
                               progress: @escaping @Sendable (Double) -> Void,
                               preview: @escaping @Sendable (CGImage) -> Void) async throws -> DetectionCount {
         let asset = AVURLAsset(url: src)
@@ -516,7 +544,16 @@ final class BlurEngine: @unchecked Sendable {
                     var frame = CIImage(cvPixelBuffer: pixels).oriented(orientation)
                     frame = frame.transformed(by: .init(translationX: -frame.extent.minX, y: -frame.extent.minY))
                     let pending = PendingFrame(frame: frame, time: CMSampleBufferGetPresentationTimeStamp(sample), sample: sample)
+                    pending.index = state.nextIndex
+                    state.nextIndex += 1
                     state.pending.append(pending)
+                    // Frames planned in the editor are masked exactly as reviewed. Frames the plan doesn't
+                    // cover (it should cover them all) fall back to automatic detection, never to no mask.
+                    if let plan, pending.index < plan.frames.count {
+                        pending.planned = plan.frames[pending.index]
+                        pending.done.signal()
+                        continue
+                    }
                     detectionQueue.async {
                         pending.result = (try? self.detect(in: frame, options: options, tiled: tiled)) ?? ([], DetectionCount())
                         pending.done.signal()
@@ -534,9 +571,17 @@ final class BlurEngine: @unchecked Sendable {
                 let current = state.pending.removeFirst()
                 current.done.wait()
                 autoreleasepool {
-                    let (detections, count) = current.result
-                    state.detections += count
-                    let tracked = state.tracker.update(with: detections)
+                    var tracked: [Detection]
+                    if let planned = current.planned {
+                        tracked = planned
+                    } else {
+                        let (detections, count) = current.result
+                        state.detections += count
+                        if state.cuts.isCut(current.frame) { state.tracker.reset() }
+                        tracked = state.tracker.update(with: detections)
+                        // Single pass: collect the editor's analysis while exporting.
+                        if let collector { tracked = collector.add(tracked, frame: current.frame, time: current.time) }
+                    }
                     let masked = mask(current.frame, detections: tracked, options: options, replacement: replacement)
 
                     var buffer: CVPixelBuffer?
@@ -593,10 +638,17 @@ final class BlurEngine: @unchecked Sendable {
         if writer.status != .completed {
             throw EngineError.writeFailed(writer.error?.localizedDescription ?? "unknown")
         }
+        if let plan { return Self.count(plan.frames.flatMap { $0 }) }
         return state.detections
     }
 
-    private static func orientation(for t: CGAffineTransform) -> CGImagePropertyOrientation {
+    /// Distinct plates and faces among planned areas (by track identifier).
+    static func count(_ detections: [Detection]) -> DetectionCount {
+        DetectionCount(plates: Set(detections.filter { !$0.isFace }.map(\.id)).count,
+                       faces: Set(detections.filter(\.isFace).map(\.id)).count)
+    }
+
+    static func orientation(for t: CGAffineTransform) -> CGImagePropertyOrientation {
         switch (t.a, t.b, t.c, t.d) {
         case (0, 1, -1, 0): .right
         case (0, -1, 1, 0): .left

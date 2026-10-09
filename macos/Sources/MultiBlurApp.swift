@@ -18,6 +18,14 @@ struct MultiBlurApp: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified(showsTitle: true))
 
+        WindowGroup("Edit", id: "editor", for: UUID.self) { $jobID in
+            if let jobID {
+                EditorWindow(jobID: jobID)
+                    .environmentObject(processor)
+            }
+        }
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsView()
                 .environmentObject(processor)

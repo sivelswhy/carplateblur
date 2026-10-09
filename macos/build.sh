@@ -10,9 +10,10 @@ cd "$(dirname "$0")"
 APP=build/MultiBlur.app
 MODEL=../models/license-plate-finetune-v1s.mlpackage
 FACE_MODEL=../models/CenterFace.mlpackage
+RECOGNITION_MODEL=../models/SFace.mlpackage
 ARCHS=${ARCHS:-$(uname -m)}
 
-for m in "$MODEL" "$FACE_MODEL"; do
+for m in "$MODEL" "$FACE_MODEL" "$RECOGNITION_MODEL"; do
     if [ ! -d "$m" ]; then
         echo "Missing $m — run ../scripts/export_coreml.sh first." >&2
         exit 1
@@ -25,6 +26,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 echo "→ Compiling CoreML models"
 swift tools/compile_model.swift "$MODEL" "$APP/Contents/Resources/PlateDetector.mlmodelc"
 swift tools/compile_model.swift "$FACE_MODEL" "$APP/Contents/Resources/CenterFace.mlmodelc"
+swift tools/compile_model.swift "$RECOGNITION_MODEL" "$APP/Contents/Resources/SFace.mlmodelc"
 
 echo "→ Compiling Swift sources ($ARCHS)"
 binaries=()

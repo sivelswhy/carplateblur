@@ -18,3 +18,8 @@ from ultralytics import YOLO
 YOLO('models/license-plate-finetune-v1$SIZE.pt').export(format='coreml', nms=True, imgsz=640)"
 
 "$ENV/bin/python" scripts/export_centerface.py
+
+# Face recognition for the editor (opencv_zoo SFace, Apache 2.0).
+SFACE=models/face_recognition_sface_2021dec.onnx
+[ -f "$SFACE" ] || curl -sL -o "$SFACE" https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+"$ENV/bin/python" scripts/export_sface.py

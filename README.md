@@ -88,6 +88,8 @@ Options mirror [deface](https://github.com/ORB-HD/deface)'s where an equivalent 
 
 A single window: toggle **Plates** and **Faces**, pick a **Style** (Blur, Mosaic, Black box, Image, None) and its options right below it (face mask shape, mosaic block size, replacement image), then drop photos, videos or folders anywhere on the window (or click ＋). Each file shows a thumbnail of its result, what was hidden, or a readable error. Double-click a row to open the result, click ⏹ to stop a file being processed or × to remove it from the list, or right-click for more.
 
+**Editor**: click ✏️ on an exported file (or right-click › Edit…) to review it. The preview shows the file as it will be exported, with an outline around every mask; scrub through videos frame by frame. Hover a mask and click it (×) to remove it, keeping that face or plate visible (everywhere in a video), e.g. to blur everyone except one person; the sidebar lists every face and plate with a thumbnail and a switch. Drag to mask something that was missed: in videos, the box then follows the object with Vision's object tracker. **Export** writes the file again exactly as previewed, replacing the previous result. The editor opens instantly: files are analyzed once, during the first export (in the same pass), and the editor reuses that analysis and your previous edits; it only analyzes again if detection settings changed since. People who leave and come back, or appear in several shots, are recognized by their face (SFace) and listed once with their number of appearances, so one click covers them all. Only clearly detected faces are compared (eyes at least 15 px apart), tracks visible at the same time are never joined, tracking compares detected boxes (not enlarged masks) so it doesn't jump between faces side by side, a track is split if its face stops matching, and tracking restarts at cuts between shots. Small faces in crowds are never joined: they're listed per appearance. Check the preview before exporting.
+
 In Finder, select photos, videos or folders and right-click › **Services › Anonymize with MultiBlur** to send them to the app. The app follows the system language (English or French). Results get the `_anonymized` suffix and never overwrite an existing file (`(1)`, `(2)`… are added).
 
 Every [deface](https://github.com/ORB-HD/deface) option is available: the masking ones in the main window, the others in **Settings** (⌘,), organized in Detection, Output and Advanced tabs. Settings are remembered between launches.
@@ -128,7 +130,7 @@ macos/build.sh                  # → macos/build/MultiBlur.app (icon: macos/Res
 open macos/build/MultiBlur.app
 ```
 
-The CoreML models are versioned in `models/*.mlpackage` (22 MB): the copies converted and checked for this project, so builds never depend on a third-party download. `ARCHS="arm64 x86_64"` builds a universal app.
+The CoreML models are versioned in `models/*.mlpackage` (40 MB): the copies converted and checked for this project, so builds never depend on a third-party download. `ARCHS="arm64 x86_64"` builds a universal app.
 
 `export_coreml.sh` uses a separate `.venv-export` environment because `coremltools` requires torch 2.7. CenterFace is converted with `scripts/export_centerface.py` (ONNX → PyTorch via `onnx2torch` → CoreML, flexible input size up to 2048 px). Pass a size to export another model (`scripts/export_coreml.sh m`), then point `MODEL` in `macos/build.sh` to it.
 
@@ -138,6 +140,7 @@ The app is ad hoc signed. To run it on another Mac, right-click it and choose **
 
 - [morsetechlab/yolov11-license-plate-detection](https://huggingface.co/morsetechlab/yolov11-license-plate-detection): YOLOv11 trained on license plates from many countries. The model and Ultralytics are licensed under **AGPL-3.0**, which matters for commercial or distributed use.
 - [deface](https://github.com/ORB-HD/deface) / CenterFace: **MIT**.
+- [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface) (opencv_zoo), face recognition in the editor: **Apache 2.0**. Converted with `scripts/export_sface.py`. On photos of public figures, no two different people scored above 0.32 (threshold used: 0.45), while the same person scored 0.67 (median).
 
 ## Limitations
 

@@ -255,12 +255,14 @@ struct LivePreview: View {
 
 struct JobList: View {
     @EnvironmentObject private var processor: Processor
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         List(processor.jobs) { job in
             JobRow(job: job)
                 .contextMenu {
                     if case .done = job.status {
+                        Button("Edit…") { openWindow(id: "editor", value: job.id) }
                         Button("Open") { NSWorkspace.shared.open(job.output) }
                         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([job.output]) }
                         Divider()
@@ -293,6 +295,7 @@ final class ThumbnailLoader: ObservableObject {
 struct JobRow: View {
     let job: Job
     @EnvironmentObject private var processor: Processor
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var thumbnail = ThumbnailLoader()
 
     private var thumbnailURL: URL {
@@ -361,6 +364,15 @@ struct JobRow: View {
     @ViewBuilder private var trailing: some View {
         switch job.status {
         case .done:
+            Button {
+                openWindow(id: "editor", value: job.id)
+            } label: {
+                Image(systemName: "pencil.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Edit: choose what to mask")
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([job.output])
             } label: {

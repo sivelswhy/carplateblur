@@ -16,9 +16,10 @@ final class FaceDetector: @unchecked Sendable {
         model = try MLModel(contentsOf: url, configuration: config)
     }
 
-    /// Returns face rectangles and scores in the image's pixel coordinates (origin bottom-left, like Core Image).
+    /// Returns face rectangles, scores and landmarks (eyes, nose, mouth corners, from the viewer's left)
+    /// in the image's pixel coordinates (origin bottom-left, like Core Image).
     /// `maxSide` downscales large images before inference, like deface's `--scale`.
-    func detect(in image: CIImage, threshold: Float, maxSide: CGFloat) throws -> [(rect: CGRect, score: Float)] {
+    func detect(in image: CIImage, threshold: Float, maxSide: CGFloat) throws -> [(rect: CGRect, score: Float, landmarks: [CGPoint])] {
         let extent = image.extent
         let fit = min(1, maxSide / max(extent.width, extent.height))
         // Same preprocessing as deface: resize so both sides are multiples of 32.
@@ -36,18 +37,24 @@ final class FaceDetector: @unchecked Sendable {
         let output = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: ["image": buffer]))
         func array(_ name: String) -> FeatureMap { FeatureMap(output.featureValue(for: name)!.multiArrayValue!) }
         let boxes = decode(heatmap: array("heatmap"), scale: array("scale"), offset: array("offset"),
+                           landmarks: array("landmarks"),
                            inputWidth: Float(width), inputHeight: Float(height), threshold: threshold)
 
         // Back to original pixels, flipping from top-left to bottom-left origin.
         return boxes.map { box in
             let x1 = CGFloat(box.x1) / scaleX, x2 = CGFloat(box.x2) / scaleX
             let y1 = CGFloat(box.y1) / scaleY, y2 = CGFloat(box.y2) / scaleY
-            return (CGRect(x: x1, y: extent.height - y2, width: x2 - x1, height: y2 - y1), box.score)
+            let landmarks = stride(from: 0, to: box.landmarks.count, by: 2).map { i in
+                CGPoint(x: CGFloat(box.landmarks[i]) / scaleX, y: extent.height - CGFloat(box.landmarks[i + 1]) / scaleY)
+            }
+            return (CGRect(x: x1, y: extent.height - y2, width: x2 - x1, height: y2 - y1), box.score, landmarks)
         }
     }
 
     private struct Box {
         var x1, y1, x2, y2, score: Float
+        /// (x, y) pairs, top-left origin, in input-image pixels.
+        var landmarks: [Float] = []
         var area: Float { (x2 - x1) * (y2 - y1) }
     }
 
@@ -101,10 +108,10 @@ final class FaceDetector: @unchecked Sendable {
     }
 
     /// Port of `CenterFace.decode` from deface (top-left origin, input-image pixels).
-    private func decode(heatmap: FeatureMap, scale: FeatureMap, offset: FeatureMap,
+    private func decode(heatmap: FeatureMap, scale: FeatureMap, offset: FeatureMap, landmarks: FeatureMap,
                         inputWidth: Float, inputHeight: Float, threshold: Float) -> [Box] {
         let rows = heatmap.rows, cols = heatmap.cols, plane = rows * cols
-        let heat = heatmap.values, scales = scale.values, offsets = offset.values
+        let heat = heatmap.values, scales = scale.values, offsets = offset.values, marks = landmarks.values
 
         var boxes: [Box] = []
         for r in 0..<rows {
@@ -116,7 +123,14 @@ final class FaceDetector: @unchecked Sendable {
                 let o0 = offsets[i], o1 = offsets[plane + i]
                 let x1 = min(max(0, (Float(c) + o1 + 0.5) * 4 - s1 / 2), inputWidth)
                 let y1 = min(max(0, (Float(r) + o0 + 0.5) * 4 - s0 / 2), inputHeight)
-                boxes.append(Box(x1: x1, y1: y1, x2: min(x1 + s1, inputWidth), y2: min(y1 + s0, inputHeight), score: score))
+                // deface: landmark j is (L[2j+1] × width + x1, L[2j] × height + y1).
+                var points: [Float] = []
+                for j in 0..<5 {
+                    points.append(marks[(2 * j + 1) * plane + i] * s1 + x1)
+                    points.append(marks[(2 * j) * plane + i] * s0 + y1)
+                }
+                boxes.append(Box(x1: x1, y1: y1, x2: min(x1 + s1, inputWidth), y2: min(y1 + s0, inputHeight),
+                                 score: score, landmarks: points))
             }
         }
         return nonMaximumSuppression(boxes)

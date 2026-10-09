@@ -109,3 +109,25 @@
 "Could not write output: %@" = "Impossible d’écrire le fichier : %@";
 "Choose a replacement image next to the Style menu." = "Choisissez une image de remplacement à côté du menu Style.";
 "Cannot read the replacement image %@." = "Impossible de lire l’image de remplacement %@.";
+
+/* Editor */
+"Edit" = "Modifier";
+"Edit…" = "Modifier…";
+"Edit: choose what to mask" = "Modifier : choisir ce qui est masqué";
+"This file is no longer in the list." = "Ce fichier n’est plus dans la liste.";
+"Finding plates and faces…" = "Recherche des plaques et des visages…";
+"Following the box through the video…" = "Suivi du rectangle dans la vidéo…";
+"Added by Hand" = "Ajoutés à la main";
+"Frames %lld–%lld" = "Images %lld à %lld";
+"Remove" = "Supprimer";
+"Brief detections (%lld)" = "Détections brèves (%lld)";
+"Nothing detected. Drag on the image to mask an area." = "Rien de détecté. Faites glisser sur l’image pour masquer une zone.";
+"Click a mask (×) to remove it. Drag to mask something that was missed." = "Cliquez sur un masque (×) pour le retirer. Faites glisser pour masquer ce qui a été oublié.";
+"%lld appearances" = "%lld apparitions";
+"Cancel" = "Annuler";
+"Export" = "Exporter";
+"Visible" = "Visible";
+"Masked" = "Masqué";
+"Click the thumbnail to jump to it" = "Cliquez sur la miniature pour y aller";
+"Play" = "Lecture";
+"Pause" = "Pause";

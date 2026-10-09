@@ -124,6 +124,14 @@ struct Options: Codable, Equatable {
     var compute: ComputeMode = .all
     var livePreview = false
 
+    /// Whether `other` finds and sizes the same masks, so an analysis made with it can be reused.
+    func sameDetection(as other: Options) -> Bool {
+        maskPlates == other.maskPlates && maskFaces == other.maskFaces
+            && plateConfidence == other.plateConfidence && faceThreshold == other.faceThreshold
+            && plateMaskScale == other.plateMaskScale && faceMaskScale == other.faceMaskScale
+            && faceResolution == other.faceResolution && smallObjects == other.smallObjects
+    }
+
     private static let key = "options"
 
     /// Settings saved before the app was renamed from PlateBlur to MultiBlur.
