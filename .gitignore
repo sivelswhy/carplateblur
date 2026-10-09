@@ -1,9 +1,9 @@
 .venv/
 .venv-export/
 __pycache__/
-models/
+models/*
+!models/*.mlpackage
 macos/build/
 anonymized/
 *_anonymized.*
 .DS_Store
-MultiBlur-models-*.zip

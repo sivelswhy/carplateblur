@@ -18,7 +18,7 @@ enum EngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .modelMissing: "Detection models are missing. Relaunch MultiBlur to download them."
+        case .modelMissing: "Detection models not found in the app bundle."
         case .unreadable(let name): "Cannot read \(name)."
         case .unsupported: "Unsupported file type."
         case .writeFailed(let reason): "Could not write output: \(reason)"
@@ -60,8 +60,8 @@ final class BlurEngine: @unchecked Sendable {
     private let videoContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
 
     init(compute: ComputeMode) throws {
-        guard let plateURL = ModelStore.url(for: "PlateDetector"),
-              let faceURL = ModelStore.url(for: "CenterFace") else {
+        guard let plateURL = Bundle.main.url(forResource: "PlateDetector", withExtension: "mlmodelc"),
+              let faceURL = Bundle.main.url(forResource: "CenterFace", withExtension: "mlmodelc") else {
             throw EngineError.modelMissing
         }
         self.compute = compute

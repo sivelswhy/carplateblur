@@ -39,66 +39,6 @@ extension MaskMode {
     }
 }
 
-// MARK: - First launch
-
-/// Asks to download the detection models when they aren't installed yet.
-struct ModelSetupView: View {
-    @EnvironmentObject private var models: ModelSetup
-
-    var body: some View {
-        VStack(spacing: 18) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 72, height: 72)
-            VStack(spacing: 6) {
-                Text("Download Detection Models")
-                    .font(.title2.weight(.semibold))
-                Text("MultiBlur needs two detection models (\(ModelStore.downloadSize)) to find license plates and faces. They're downloaded once from GitHub; after that, everything runs offline on this Mac.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            switch models.state {
-            case .downloading(let fraction):
-                VStack(spacing: 6) {
-                    ProgressView(value: fraction)
-                    Text(fraction < 1 ? "Downloading… \(fraction.formatted(.percent.precision(.fractionLength(0))))" : "Installing…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            case .failed(let message):
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            default:
-                EmptyView()
-            }
-
-            HStack {
-                Button("Quit") { NSApp.terminate(nil) }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button(models.state.isFailed ? "Try Again" : "Download") { models.download() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(models.state.isDownloading)
-            }
-            .controlSize(.large)
-        }
-        .padding(28)
-        .frame(width: 420)
-        .interactiveDismissDisabled()
-    }
-}
-
-extension ModelSetup.State {
-    var isFailed: Bool { if case .failed = self { true } else { false } }
-    var isDownloading: Bool { if case .downloading = self { true } else { false } }
-}
-
 // MARK: - Main window
 
 struct ContentView: View {

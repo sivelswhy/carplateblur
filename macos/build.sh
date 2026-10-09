@@ -4,8 +4,6 @@
 # Environment:
 #   ARCHS         architectures to build, e.g. "arm64 x86_64" for a universal app (default: this Mac's)
 #   BUILD_NUMBER  sets the bundle version to 1.0.<BUILD_NUMBER> (used by CI releases)
-#   BUNDLE_MODELS 0 = don't embed the CoreML models; the app then downloads them on first launch
-#                 (default: embed them when ../models has them, e.g. after scripts/export_coreml.sh)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -14,22 +12,19 @@ MODEL=../models/license-plate-finetune-v1s.mlpackage
 FACE_MODEL=../models/CenterFace.mlpackage
 ARCHS=${ARCHS:-$(uname -m)}
 
-if [ "${BUNDLE_MODELS:-1}" != 0 ] && [ -d "$MODEL" ] && [ -d "$FACE_MODEL" ]; then
-    BUNDLE_MODELS=1
-else
-    BUNDLE_MODELS=0
-fi
+for m in "$MODEL" "$FACE_MODEL"; do
+    if [ ! -d "$m" ]; then
+        echo "Missing $m — run ../scripts/export_coreml.sh first." >&2
+        exit 1
+    fi
+done
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-if [ "$BUNDLE_MODELS" = 1 ]; then
-    echo "→ Compiling CoreML models"
-    swift tools/compile_model.swift "$MODEL" "$APP/Contents/Resources/PlateDetector.mlmodelc"
-    swift tools/compile_model.swift "$FACE_MODEL" "$APP/Contents/Resources/CenterFace.mlmodelc"
-else
-    echo "→ Models not embedded: the app downloads them on first launch"
-fi
+echo "→ Compiling CoreML models"
+swift tools/compile_model.swift "$MODEL" "$APP/Contents/Resources/PlateDetector.mlmodelc"
+swift tools/compile_model.swift "$FACE_MODEL" "$APP/Contents/Resources/CenterFace.mlmodelc"
 
 echo "→ Compiling Swift sources ($ARCHS)"
 binaries=()

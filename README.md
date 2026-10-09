@@ -1,6 +1,6 @@
 # MultiBlur
 
-Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, **pixelation** or a **black box**. Everything runs **fully offline** once the models have been downloaded (once).
+Detects license plates (any country) and faces in images, videos and folders, and masks them with a **blur**, **pixelation** or a **black box**. Everything runs **fully offline**.
 
 - **Plates**: YOLOv11 fine-tuned on license plates from many countries.
 - **Faces**: CenterFace from [deface](https://github.com/ORB-HD/deface).
@@ -14,7 +14,7 @@ Two front-ends share the same detectors:
 
 Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivelswhy/carplateblur/releases/latest) (macOS 14+, Apple Silicon or Intel). Unzip it, move MultiBlur.app to Applications and open it once with right-click → Open (or System Settings → Privacy & Security → Open Anyway): the app is ad hoc signed, not notarized.
 
-On first launch MultiBlur asks to download its two detection models (21 MB, from the [models-v1](https://github.com/sivelswhy/carplateblur/releases/tag/models-v1) release, SHA-256 verified) into `~/Library/Application Support/MultiBlur`. After that it never touches the network.
+The detection models are included in the app, which never touches the network.
 
 Every push to `main` builds a universal app and publishes it as a new release ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
@@ -108,7 +108,7 @@ macos/build.sh                  # → macos/build/MultiBlur.app (icon: macos/Res
 open macos/build/MultiBlur.app
 ```
 
-Builds embed the models when `models/` has them; otherwise (or with `BUNDLE_MODELS=0`) the app downloads them on first launch. `ARCHS="arm64 x86_64"` builds a universal app. To publish new models, run `scripts/package_models.sh v2`, upload the zip as a `models-v2` release and update the version and SHA-256 in `macos/Sources/ModelStore.swift`.
+The CoreML models are versioned in `models/*.mlpackage` (22 MB): the copies converted and checked for this project, so builds never depend on a third-party download. `ARCHS="arm64 x86_64"` builds a universal app.
 
 `export_coreml.sh` uses a separate `.venv-export` environment because `coremltools` requires torch 2.7. CenterFace is converted with `scripts/export_centerface.py` (ONNX → PyTorch via `onnx2torch` → CoreML, flexible input size up to 2048 px). Pass a size to export another model (`scripts/export_coreml.sh m`), then point `MODEL` in `macos/build.sh` to it.
 

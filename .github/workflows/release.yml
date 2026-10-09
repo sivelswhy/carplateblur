@@ -1,8 +1,8 @@
 name: Build & Release
 
 # Every push to main builds a universal MultiBlur.app and publishes it as a GitHub release.
-# The detection models aren't built here: the app downloads them on first launch from the
-# "models-v1" release (see scripts/package_models.sh).
+# The CoreML models are versioned in models/*.mlpackage and embedded in the app, which then
+# works fully offline.
 on:
   push:
     branches: [main]
@@ -19,10 +19,10 @@ jobs:
   build:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build MultiBlur.app (Apple Silicon + Intel)
-        run: ARCHS="arm64 x86_64" BUILD_NUMBER=${{ github.run_number }} BUNDLE_MODELS=0 macos/build.sh
+        run: ARCHS="arm64 x86_64" BUILD_NUMBER=${{ github.run_number }} macos/build.sh
 
       - name: Package
         run: ditto -c -k --keepParent macos/build/MultiBlur.app MultiBlur-macOS.zip
@@ -37,7 +37,7 @@ jobs:
             echo
             echo "**Install**: unzip, move MultiBlur.app to Applications, then open it once with right-click → Open"
             echo "(or System Settings → Privacy & Security → Open Anyway), since the app is not notarized."
-            echo "On first launch, MultiBlur asks to download its detection models (21 MB); after that it works offline."
+            echo "Everything runs offline on your Mac: the detection models are included."
             echo
             echo "Requires macOS 14 or later, Apple Silicon or Intel."
           } > notes.md
