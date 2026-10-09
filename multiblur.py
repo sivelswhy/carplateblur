@@ -151,15 +151,18 @@ def suppress_duplicates(found: list[tuple[tuple, float]]) -> list[tuple[tuple, f
 # Tracking
 # --------------------------------------------------------------------------- #
 class Tracker:
-    """Follows plates and faces across video frames so each object keeps exactly one mask, and that
-    mask keeps moving along the object's path for a few frames when the detector misses it."""
+    """Follows plates and faces across video frames so each object keeps exactly one steady mask, and that
+    mask keeps following the object for a few frames when the detector misses it."""
+
+    SIZE_RESPONSE = 0.3           # how much a detection changes the mask size (box sizes flicker)
+    MINIMUM_COVERAGE = 0.85       # a smoothed mask is never smaller than this share of the detection
+    MISSED_VELOCITY_DECAY = 0.8   # share of the velocity kept per frame without a detection
 
     def __init__(self, max_missed: int):
         self.max_missed = max_missed
         self.tracks: list[dict] = []  # {"det": Detection, "velocity": (dx, dy), "missed": int}
 
     def update(self, detections: list[Detection]) -> list[Detection]:
-        previous = [self._center(t["det"].box) for t in self.tracks]
         for t in self.tracks:  # predict where each tracked object is now
             dx, dy = t["velocity"]
             x1, y1, x2, y2 = t["det"].box
@@ -177,22 +180,36 @@ class Tracker:
                 continue
             matched_tracks.add(ti)
             matched_detections.add(di)
-            cx, cy = self._center(detections[di].box)
-            px, py = previous[ti]
-            vx, vy = self.tracks[ti]["velocity"]
-            self.tracks[ti].update(det=detections[di], velocity=(0.5 * vx + 0.5 * (cx - px), 0.5 * vy + 0.5 * (cy - py)), missed=0)
+            self._update(self.tracks[ti], detections[di])
 
         for ti, t in enumerate(self.tracks):
             if ti not in matched_tracks:
+                # Unseen: keep the size and let the motion fade out, so the mask can't fly off or zoom.
                 t["missed"] += 1
-                # Grow a little while unseen to cover the uncertainty of the prediction.
-                x1, y1, x2, y2 = t["det"].box
-                gx, gy = (x2 - x1) * 0.03, (y2 - y1) * 0.03
-                t["det"] = replace(t["det"], box=(x1 - gx, y1 - gy, x2 + gx, y2 + gy))
+                vx, vy = t["velocity"]
+                t["velocity"] = (vx * self.MISSED_VELOCITY_DECAY, vy * self.MISSED_VELOCITY_DECAY)
         self.tracks = [t for t in self.tracks if t["missed"] <= self.max_missed]
         self.tracks += [{"det": d, "velocity": (0.0, 0.0), "missed": 0}
                         for di, d in enumerate(detections) if di not in matched_detections]
         return [t["det"] for t in self.tracks]
+
+    def _update(self, track: dict, detection: Detection) -> None:
+        px1, py1, px2, py2 = track["det"].box
+        mx1, my1, mx2, my2 = detection.box
+        # The center follows the detection exactly: smoothing it makes masks lag behind moving faces.
+        cx, cy = (mx1 + mx2) / 2, (my1 + my2) / 2
+        pw, ph, mw, mh = px2 - px1, py2 - py1, mx2 - mx1, my2 - my1
+        w = max(pw + self.SIZE_RESPONSE * (mw - pw), mw * self.MINIMUM_COVERAGE)
+        h = max(ph + self.SIZE_RESPONSE * (mh - ph), mh * self.MINIMUM_COVERAGE)
+
+        # Velocity from the motion between detections, capped to a plausible speed per frame.
+        vx, vy = track["velocity"]
+        prev_cx, prev_cy = (px1 + px2) / 2 - vx, (py1 + py2) / 2 - vy
+        limit = 0.3 * max(w, h)
+        clamp = lambda v: min(max(v, -limit), limit)
+        track["velocity"] = (clamp(0.5 * vx + 0.5 * (cx - prev_cx)), clamp(0.5 * vy + 0.5 * (cy - prev_cy)))
+        track["det"] = replace(detection, box=(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2))
+        track["missed"] = 0
 
     @staticmethod
     def _center(b):

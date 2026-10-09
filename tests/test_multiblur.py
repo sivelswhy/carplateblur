@@ -78,6 +78,36 @@ def test_tracker_follows_the_object_while_the_detector_misses_it():
     assert 45 < center_x < 65  # moved on from x=30 (center 50) along the observed motion
 
 
+def test_tracker_masks_do_not_zoom_or_fly_off_while_missed():
+    tracker = mb.Tracker(max_missed=12)
+    for x in (0, 10, 20, 30):
+        tracker.update([face(x, 50)])
+    sizes, centers = [], []
+    for _ in range(12):
+        (mask,) = tracker.update([])
+        sizes.append(mask.box[2] - mask.box[0])
+        centers.append((mask.box[0] + mask.box[2]) / 2)
+    assert all(size == pytest.approx(40) for size in sizes)  # no zoom
+    assert centers[-1] - 50 < 1.5 * 40                       # drift stays within ~1.5 mask sizes
+
+
+def test_tracker_smooths_flickering_box_sizes_but_never_shrinks_below_the_face():
+    tracker = mb.Tracker(max_missed=3)
+    tracker.update([face(100, 100, size=40)])
+    (mask,) = tracker.update([face(100, 100, size=60)])   # detector suddenly reports a bigger box
+    assert 40 < mask.box[2] - mask.box[0] < 60             # grows smoothly
+    (mask,) = tracker.update([face(100, 100, size=30)])   # then a much smaller one
+    assert mask.box[2] - mask.box[0] >= 30 * 0.85          # still covers the face
+
+
+def test_tracker_mask_stays_centered_on_the_detection():
+    tracker = mb.Tracker(max_missed=3)
+    tracker.update([face(0, 0)])
+    (mask,) = tracker.update([face(15, 5)])
+    assert (mask.box[0] + mask.box[2]) / 2 == pytest.approx(35)
+    assert (mask.box[1] + mask.box[3]) / 2 == pytest.approx(25)
+
+
 def test_tracker_forgets_objects_after_max_missed_frames():
     tracker = mb.Tracker(max_missed=2)
     tracker.update([face(0, 0)])
