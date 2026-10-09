@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct MultiBlurApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @StateObject private var processor = Processor()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         Window("MultiBlur", id: "main") {
@@ -19,6 +20,7 @@ struct MultiBlurApp: App {
         Settings {
             SettingsView()
                 .environmentObject(processor)
+                .environmentObject(updater)
         }
     }
 }

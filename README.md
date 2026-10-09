@@ -14,7 +14,7 @@ Two front-ends share the same detectors:
 
 Grab the latest **MultiBlur-macOS.zip** from [Releases](https://github.com/sivelswhy/multiblur/releases/latest) (macOS 14+, Apple Silicon or Intel). Unzip it, move MultiBlur.app to Applications and open it once with right-click → Open (or System Settings → Privacy & Security → Open Anyway): the app is ad hoc signed, not notarized.
 
-The detection models are included in the app, which never touches the network.
+The detection models are included in the app, which never touches the network on its own. **Settings › Advanced › Check for Updates** compares the commit the app was built from with the latest commit on `main`; when they differ, **Update and Relaunch** downloads that commit's release, checks it's a validly signed MultiBlur, replaces the app and relaunches it.
 
 Every push to `main` builds a universal app and publishes it as a new release ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
 

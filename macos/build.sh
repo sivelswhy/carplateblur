@@ -42,6 +42,10 @@ if [ -n "${BUILD_NUMBER:-}" ]; then
     plutil -replace CFBundleShortVersionString -string "1.0.$BUILD_NUMBER" "$APP/Contents/Info.plist"
     plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP/Contents/Info.plist"
 fi
+# The commit the app is built from, compared with GitHub by "Check for Updates".
+if COMMIT=$(git rev-parse HEAD 2>/dev/null); then
+    plutil -insert MultiBlurCommit -string "$COMMIT" "$APP/Contents/Info.plist"
+fi
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
 echo "→ Signing (ad hoc)"

@@ -410,6 +410,78 @@ struct StatusBar: View {
 
 // MARK: - Settings window
 
+/// Version info and the update check against the latest commit on GitHub.
+struct UpdateSection: View {
+    @EnvironmentObject private var updater: Updater
+
+    var body: some View {
+        Section {
+            LabeledContent("Version") {
+                Text("\(updater.version) (\(updater.shortCommit ?? "local build"))")
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                status
+                Spacer(minLength: 8)
+                action
+            }
+        } header: {
+            Text("Updates")
+        } footer: {
+            Text("Compares this build with the latest commit on github.com/\(Updater.repository). This is the only time MultiBlur goes online.")
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch updater.state {
+        case .idle:
+            Text("Check whether a newer version is available.").foregroundStyle(.secondary)
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking…").foregroundStyle(.secondary)
+            }
+        case .upToDate:
+            Label("MultiBlur is up to date.", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .building(let summary):
+            Text("A new version (“\(summary)”) is being built. Check again in a minute.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .available(let release):
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Version \(release.version) is available", systemImage: "arrow.down.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text("\(release.commit): \(release.summary)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        case .downloading(let fraction):
+            ProgressView(value: fraction) { Text("Downloading update…").foregroundStyle(.secondary) }
+        case .installing:
+            Text("Installing and relaunching…").foregroundStyle(.secondary)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch updater.state {
+        case .available(let release):
+            Button("Update and Relaunch") { updater.install(release) }
+                .keyboardShortcut(.defaultAction)
+        case .checking, .downloading, .installing:
+            EmptyView()
+        default:
+            Button("Check for Updates") { updater.check() }
+        }
+    }
+}
+
 struct LabeledSlider: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
@@ -549,6 +621,8 @@ struct AdvancedSettings: View {
 
     var body: some View {
         Form {
+            UpdateSection()
+
             Section {
                 Picker("Run models on", selection: $processor.options.compute) {
                     ForEach(ComputeMode.allCases) { Text($0.label).tag($0) }
